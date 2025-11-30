@@ -1,11 +1,11 @@
-# ppo_cleanrl_simglucose.py
-# Adapted CleanRL-style PPO for continuous (Box) action space like simglucose.
-# Keeps the CleanRL CLI/Args and main loop, but uses Normal policy and action clipping.
+# Adapted CleanRL-style PPO for continuous (Box) action space
+# Keeps the CleanRL CLI/Args and main loop, but uses Normal policy
 
 import os
 import random
 import time
 from dataclasses import dataclass
+from datetime import datetime
 
 import gymnasium as gym
 import numpy as np
@@ -59,9 +59,6 @@ class Args:
     clip_actions: bool = True  # NEW: toggle action clipping
 
 
-# ----------------------------
-# Env factory (vectorized)
-# ----------------------------
 def make_env(env_id, patient, render_mode=None):
     register(
         id=f"simglucose/{patient}-v0",
@@ -153,7 +150,8 @@ def main():
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
     args.num_iterations = args.total_timesteps // args.batch_size
-    run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}__{timestamp}"
 
     # optional tracking (WandB)
     if args.track:
@@ -216,6 +214,9 @@ def main():
     next_obs = torch.Tensor(next_obs).to(device)
     next_done = torch.zeros(args.num_envs).to(device)
 
+    episode_returns = torch.zeros(args.num_envs).to(device)
+    episode_lengths = torch.zeros(args.num_envs).to(device)
+
     for iteration in range(1, args.num_iterations + 1):
         # anneal lr
         if args.anneal_lr:
@@ -246,6 +247,16 @@ def main():
             next_obs = torch.Tensor(next_obs_np).to(device)
             rewards[step] = torch.tensor(reward_np, dtype=torch.float32).to(device)
             next_done = torch.Tensor(next_done).to(device)
+
+            episode_returns += rewards[step]
+            episode_lengths += 1
+
+            for i, done_flag in enumerate(next_done):
+                if done_flag:
+                    writer.add_scalar("charts/episodic_return", episode_returns[i].item(), global_step)
+                    writer.add_scalar("charts/episodic_length", episode_lengths[i].item(), global_step)
+                    episode_returns[i] = 0
+                    episode_lengths[i] = 0
 
             # logging episode returns for finished episodes
             if "final_info" in infos:
