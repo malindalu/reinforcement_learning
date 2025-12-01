@@ -1,32 +1,92 @@
-certifi==2025.11.12
-charset-normalizer==3.4.4
+absl-py==2.3.1
+annotated-types==0.7.0
+astunparse==1.6.3
+Brotli @ file:///Users/runner/miniforge3/conda-bld/brotli-split_1764017116075/work
+certifi @ file:///home/conda/feedstock_root/build_artifacts/certifi_1762976168352/work/certifi
+cffi @ file:///Users/runner/miniforge3/conda-bld/cffi_1761203062999/work
+charset-normalizer @ file:///home/conda/feedstock_root/build_artifacts/charset-normalizer_1760437218288/work
+click==8.3.1
 cloudpickle==3.1.2
 contourpy==1.3.2
 cycler==0.12.1
 dill==0.4.0
+docstring_parser==0.17.0
 Farama-Notifications==0.0.4
+filelock @ file:///home/conda/feedstock_root/build_artifacts/filelock_1759948064277/work
+flatbuffers==25.9.23
 fonttools==4.60.1
+fsspec==2025.10.0
+gast==0.7.0
+gitdb==4.0.12
+GitPython==3.1.45
+gmpy2 @ file:///Users/runner/miniforge3/conda-bld/gmpy2_1762946951276/work
+google-pasta==0.2.0
+grpcio==1.76.0
 gym==0.9.4
 gymnasium==0.29.1
-idna==3.11
+h2 @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_h2_1756364871/work
+h5py==3.15.1
+hpack @ file:///home/conda/feedstock_root/build_artifacts/hpack_1737618293087/work
+hyperframe @ file:///home/conda/feedstock_root/build_artifacts/hyperframe_1737618333194/work
+idna @ file:///home/conda/feedstock_root/build_artifacts/idna_1760286409563/work
+Jinja2 @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_jinja2_1764517220/work
+keras==3.12.0
 kiwisolver==1.4.9
+libclang==18.1.1
+Markdown==3.10
+markdown-it-py==4.0.0
+MarkupSafe @ file:///Users/runner/miniforge3/conda-bld/markupsafe_1759055293570/work
 matplotlib==3.10.7
+mdurl==0.1.2
+ml_dtypes==0.5.4
+mpmath @ file:///home/conda/feedstock_root/build_artifacts/mpmath_1733302684489/work
 multiprocess==0.70.18
+namex==0.1.0
+networkx @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_networkx_1731521053/work
 numpy @ file:///Users/runner/miniforge3/conda-bld/numpy_1747544633931/work/dist/numpy-2.2.6-cp310-cp310-macosx_11_0_arm64.whl#sha256=50a17562ef677de6531058e998e32487919c216e19ca4e1bdd86b0e1262251c1
+opt_einsum==3.4.0
+optree==0.18.0
 packaging==25.0
 pandas==2.3.3
 pathos==0.3.4
-pillow==12.0.0
+pillow @ file:///Users/runner/miniforge3/conda-bld/bld/rattler-build_pillow_1764330196/work
+platformdirs==4.5.0
 pox==0.3.6
 ppft==1.7.7
+protobuf==6.33.1
+pycparser @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_pycparser_1733195786/work
+pydantic==2.12.4
+pydantic_core==2.41.5
 pyglet==2.1.11
+Pygments==2.19.2
 pyparsing==3.2.5
+PySocks @ file:///home/conda/feedstock_root/build_artifacts/pysocks_1733217236728/work
 python-dateutil==2.9.0.post0
 pytz==2025.2
-requests==2.32.5
+PyYAML @ file:///Users/runner/miniforge3/conda-bld/pyyaml_1758891758214/work
+requests @ file:///home/conda/feedstock_root/build_artifacts/requests_1755614211359/work
+rich==14.2.0
 scipy==1.15.3
+sentry-sdk==2.46.0
+shtab==1.8.0
 simglucose==0.2.11
 six==1.17.0
-typing_extensions==4.15.0
+smmap==5.0.2
+sympy @ file:///home/conda/feedstock_root/build_artifacts/sympy_1745946051654/work
+tensorboard==2.20.0
+tensorboard-data-server==0.7.2
+tensorflow==2.20.0
+termcolor==3.2.0
+torch==2.5.1
+torchaudio==2.5.1
+torchvision==0.20.1
+typeguard==4.4.4
+typing-inspection==0.4.2
+typing_extensions @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_typing_extensions_1756220668/work
+tyro==0.9.35
 tzdata==2025.2
-urllib3==2.5.0
+urllib3 @ file:///home/conda/feedstock_root/build_artifacts/urllib3_1750271362675/work
+wandb==0.23.0
+Werkzeug==3.1.3
+wrapt==2.0.1
+zstandard==0.25.0

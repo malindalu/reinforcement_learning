@@ -9,6 +9,11 @@ python export_tensorboard_images.py \
     --out plots/adolescent2-v0__ppo__1__1764624266__2025-12-01_16-24-26
 
 python ppo.py \
-    --total_timesteps 1000 \
     --patient adolescent2 \
     --patient_name_hash adolescent#002
+
+# ENV 
+
+ conda create -n rl python=3.10 -y
+ conda activate rl
+ pip install -r requirements_cluster.txt

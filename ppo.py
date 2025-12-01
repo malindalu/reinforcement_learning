@@ -185,7 +185,7 @@ def main():
 
     # vectorized envs
     envs = gym.vector.SyncVectorEnv(
-        [make_env(args.env_id, args.patient, args.patient_name_hash, "human") for i in range(args.num_envs)]
+        [make_env(args.env_id, args.patient, args.patient_name_hash, None) for i in range(args.num_envs)]
     )
 
     # ensure Box action space
