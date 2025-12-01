@@ -34,6 +34,8 @@ class Args:
     capture_video: bool = False
 
     env_id: str = "simglucose/adolescent2-v0"
+    patient: str = "adolescent2"
+    patient_name_hash: str = "adolescent#002"
     total_timesteps: int = 500000
     learning_rate: float = 2.5e-4
     num_envs: int = 1
@@ -59,12 +61,12 @@ class Args:
     clip_actions: bool = True  # NEW: toggle action clipping
 
 
-def make_env(env_id, patient, render_mode=None):
+def make_env(env_id, patient, patient_name_hash, render_mode=None):
     register(
         id=f"simglucose/{patient}-v0",
         entry_point="simglucose.envs:T1DSimGymnaisumEnv",
         max_episode_steps=10,
-        kwargs={"patient_name": "adolescent#002"},
+        kwargs={"patient_name": patient_name_hash},
     )
     env_id = f"simglucose/{patient}-v0"
 
@@ -183,7 +185,7 @@ def main():
 
     # vectorized envs
     envs = gym.vector.SyncVectorEnv(
-        [make_env(args.env_id, "adolescent2", "human") for i in range(args.num_envs)]
+        [make_env(args.env_id, args.patient, args.patient_name_hash, "human") for i in range(args.num_envs)]
     )
 
     # ensure Box action space
@@ -370,6 +372,11 @@ def main():
 
     envs.close()
     writer.close()
+
+    run_path = f"runs/{run_name}"
+    model_file = os.path.join(run_path, f"{args.patient}_ppo.pt")
+    torch.save(agent.state_dict(), model_file)
+    print(f"Saved model to {model_file}")
 
 
 if __name__ == "__main__":

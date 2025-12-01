@@ -5,5 +5,10 @@ tensorboard --logdir runs
 # TO SAVE GRAPHS TO DIRECTORY
 
 python export_tensorboard_images.py \
-    --logdir runs/simglucose/adolescent2-v0__ppo__1__1764539969 \
-    --out plots/adolescent2-v0__ppo__1__1764539969
+    --logdir runs/simglucose/adolescent2-v0__ppo__1__1764624266__2025-12-01_16-24-26 \
+    --out plots/adolescent2-v0__ppo__1__1764624266__2025-12-01_16-24-26
+
+python ppo.py \
+    --total_timesteps 1000 \
+    --patient adolescent2 \
+    --patient_name_hash adolescent#002
