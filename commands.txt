@@ -1,0 +1,9 @@
+# TO VIEW GRAPHS ON LOCALHOST
+
+tensorboard --logdir runs      
+
+# TO SAVE GRAPHS TO DIRECTORY
+
+python export_tensorboard_images.py \
+    --logdir runs/simglucose/adolescent2-v0__ppo__1__1764539969 \
+    --out plots/adolescent2-v0__ppo__1__1764539969
