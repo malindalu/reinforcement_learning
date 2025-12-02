@@ -11,7 +11,7 @@
 # Load your shell environment to activate your Conda environment
 source /home/user/.bashrc
 conda activate rl_omni
-pip install -r requirements_cluster.txt
+pip install -r omni/equirements_cluster.txt
 
 # Run your command or script
-python cpo.py
+python omni/cpo.py
