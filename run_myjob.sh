@@ -1,0 +1,19 @@
+#!/bin/bash
+#SBATCH -p sched_mit_kburdge_r8      # partition name
+#SBATCH --job-name=cleanrl_cpo             # name for your job
+#SBATCH --gres=gpu:1                 # if you need GPUs
+#SBATCH --ntasks=1                   # number of tasks (often 1 for serial jobs)
+#SBATCH --cpus-per-task=4            # CPU cores per task
+#SBATCH --mem=16G                    # memory per node
+#SBATCH --time=05:00:00              # max walltime (HH:MM:SS)
+#SBATCH --output=slurm-%j.out        # output file (%j = job ID) to capture logs for debugging
+
+# Load your shell environment to activate your Conda environment
+source /home/user/.bashrc
+conda activate myconda
+
+# Load any modules or software you need
+module load cuda/12.0
+
+# Run your command or script
+python my_analysis.py
