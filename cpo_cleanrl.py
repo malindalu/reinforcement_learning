@@ -268,13 +268,13 @@ def main():
                     episode_returns[i] = 0
                     episode_lengths[i] = 0
 
-        reward_mean = rewards.mean()
-        reward_std = rewards.std() + 1e-8
-        rewards = (rewards - reward_mean) / reward_std
+        # reward_mean = rewards.mean()
+        # reward_std = rewards.std() + 1e-8
+        # rewards = (rewards - reward_mean) / reward_std
 
-        cost_mean = costs.mean()
-        cost_std = costs.std() + 1e-8
-        costs = (costs - cost_mean) / cost_std
+        # cost_mean = costs.mean()
+        # cost_std = costs.std() + 1e-8
+        # costs = (costs - cost_mean) / cost_std
 
         # --- GAE for rewards ---
         with torch.no_grad():
