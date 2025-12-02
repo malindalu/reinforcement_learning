@@ -223,6 +223,14 @@ def main():
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}__{timestamp}_{'lagrangian' if args.use_lagrangian else 'standard'}"
 
+    hyperparams_file = os.path.join(f"runs/{run_name}", f"hyperparams.txt")
+    os.makedirs(f"runs/{run_name}", exist_ok=True)
+    with open(hyperparams_file, "w") as f:
+        f.write("=== RUN PARAMETERS ===\n")
+        for k, v in vars(args).items():
+            f.write(f"{k}: {v}\n")
+        f.write("=======================\n")
+
     # optional tracking (WandB)
     if args.track:
         import wandb
