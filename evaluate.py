@@ -5,22 +5,29 @@ import numpy as np
 import matplotlib.pyplot as plt
 from gymnasium.envs.registration import register
 from simglucose.envs import T1DSimGymnaisumEnv  # Make sure this is available
-from cpo_cleanrl import AgentContinuous  # Adjust import for your agent
+from cpo_cleanrl import AgentContinuous as CPOAgent # Adjust import for your agent
+from ppo import AgentContinuous as PPOAgent  # Adjust import for your agent
+
+import argparse
 
 # 1. Register the environment for testing (with 24-hour horizon)
-def make_test_env(patient_name="adolescent#002"):
+def make_test_env(patient = "adolescent2", patient_name_hash="adolescent#002"):
     register(
-        id="simglucose/adolescent2-test-v0",  # Create a new test env
+        id=f"simglucose/{patient}-test-v0",  # Create a new test env
         entry_point="simglucose.envs:T1DSimGymnaisumEnv",
         max_episode_steps=288,  # 24 hours (288 × 5 minutes = 24 hours)
-        kwargs={"patient_name": patient_name},
+        kwargs={"patient_name": patient_name_hash},
     )
-    return gym.make("simglucose/adolescent2-test-v0")
+    return gym.make(f"simglucose/{patient}-test-v0")
 
 # 2. Load trained agent
-def load_trained_agent(model_path="runs/simglucose/adolescent2-v0__cpo_cleanrl__1__1764654879__2025-12-02_00-54-39/adolescent2_cpo.pt"):
+def load_trained_agent(model_path="runs/simglucose/adolescent2-v0__cpo_cleanrl__1__1764654879__2025-12-02_00-54-39/adolescent2_cpo.pt", model="cpo_cleanrl"):
     # Initialize your agent, matching the architecture used during training
-    agent = AgentContinuous(obs_dim=1, act_dim=1, act_low=-1, act_high=1)  # Adjust as necessary
+    if model == "cpo_cleanrl":
+        ModelAgent = CPOAgent  # Adjust if different agent class
+    else: # model == "ppo"
+        ModelAgent = PPOAgent  # Adjust if different agent class
+    agent = ModelAgent(obs_dim=1, act_dim=1, act_low=-1, act_high=1)  # Adjust as necessary
     agent.load_state_dict(torch.load(model_path))  # Load the model
     agent.eval()  # Switch to evaluation mode
     return agent
@@ -64,11 +71,22 @@ def plot_bg_trajectory(bg_trajectory):
     plt.show()
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model", type=str, default="cpo_cleanrl",
+                        choices=["cpo_cleanrl", "ppo"])
+    parser.add_argument("--model_path", type=str, required=True)
+    parser.add_argument("--patient", type=str, default="adolescent2")
+    parser.add_argument("--patient_hash", type=str, default="adolescent#002")
+    args = parser.parse_args()
+
+    # Load agent
+    agent = load_trained_agent(args.model_path, args.model)
+
     # Load the trained agent
-    agent = load_trained_agent("runs/simglucose/adolescent2-v0__cpo_cleanrl__1__1764654879__2025-12-02_00-54-39/adolescent2_cpo.pt")
+    agent = load_trained_agent(model_path=args.model_path, model=args.model)
 
     # Initialize the environment for testing (24-hour duration)
-    env = make_test_env(patient_name="adolescent#002")
+    env = make_test_env(patient = args.patient, patient_name_hash=args.patient_hash)
 
     # Evaluate the policy and get BG trajectory
     bg_trajectory = evaluate_policy(agent, env, num_steps=288)

@@ -5,8 +5,8 @@ tensorboard --logdir runs
 # TO SAVE GRAPHS TO DIRECTORY
 
 python export_tensorboard_images.py \
-    --logdir runs/simglucose/adolescent2-v0__ppo__1__1764624266__2025-12-01_16-24-26 \
-    --out plots/adolescent2-v0__ppo__1__1764624266__2025-12-01_16-24-26
+    --logdir runs/simglucose/adolescent2-v0__ppo__1__1764663220__2025-12-02_03-13-40 \
+    --out plots/adolescent2-v0__ppo__1__1764663220__2025-12-02_03-13-40
 
 python ppo.py \
     --patient adolescent2 \
@@ -17,3 +17,13 @@ python ppo.py \
  conda create -n rl python=3.10 -y
  conda activate rl
  pip install -r requirements_cluster.txt
+
+# CPO FSRL
+python export_tensorboard_images.py \
+    --logdir logs/adolescent2/tb \
+    --out logs/plots/adolescent2
+
+# EVAL 
+
+python evaluate.py --model_path runs/simglucose/adolescent2-v0__ppo__1__1764624266__2025-12-01_16-24-26/adolescent2_ppo.pt \
+    --model ppo
