@@ -42,8 +42,8 @@ def load_trained_agent(model_path="runs/simglucose/adolescent2-v0__cpo_cleanrl__
     return agent
 
 # 3. Test the policy on the environment
-def evaluate_policy(agent, env, num_steps=288):
-    obs, _ = env.reset()  # Reset to start
+def evaluate_policy(agent, env, num_steps=288, seed=123):
+    obs, _ = env.reset(seed=seed)  # Reset to start
     obs = torch.Tensor(obs).reshape(1, -1)  # Flatten observation
     bg_trajectory = []  # To store BG over time
 
@@ -66,7 +66,7 @@ def evaluate_policy(agent, env, num_steps=288):
     return bg_trajectory
 
 # 4. Visualize the BG trajectory
-def plot_bg_trajectory(bg_trajectory):
+def plot_bg_trajectory(bg_trajectory, save_path="bg_trajectory.png"):
     # BG plot over 24 hours
     plt.figure(figsize=(12, 6))
     plt.plot(bg_trajectory, label="Blood Glucose (mg/dL)")
@@ -77,31 +77,34 @@ def plot_bg_trajectory(bg_trajectory):
     plt.ylabel("Blood Glucose (mg/dL)")
     plt.legend(loc="upper right")
     plt.grid(True)
+
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
     plt.show()
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, default="cpo_cleanrl",
                         choices=["cpo_cleanrl", "ppo"])
+    parser.add_argument("--model_full_path", type=str, required=True)
     parser.add_argument("--model_path", type=str, required=True)
     parser.add_argument("--patient", type=str, default="adolescent2")
     parser.add_argument("--patient_hash", type=str, default="adolescent#002")
+    parser.add_argument("--seed", type=int, default=123)
+
+
     args = parser.parse_args()
 
-    # Load agent
-    agent = load_trained_agent(args.model_path, args.model)
-
     # Load the trained agent
-    agent = load_trained_agent(model_path=args.model_path, model=args.model)
+    agent = load_trained_agent(model_path=args.model_full_path, model=args.model)
 
     # Initialize the environment for testing (24-hour duration)
     env = make_test_env(patient = args.patient, patient_name_hash=args.patient_hash)
 
     # Evaluate the policy and get BG trajectory
-    bg_trajectory = evaluate_policy(agent, env, num_steps=288)
+    bg_trajectory = evaluate_policy(agent, env, num_steps=288, seed=args.seed)
 
     # Visualize the BG trajectory
-    plot_bg_trajectory(bg_trajectory)
+    plot_bg_trajectory(bg_trajectory, save_path=f"plots/{args.model_path}/bg_trajectory_eval.png")
 
     env.close()
 
