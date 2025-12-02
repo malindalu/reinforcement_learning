@@ -10,10 +10,7 @@
 
 # Load your shell environment to activate your Conda environment
 source /home/user/.bashrc
-conda activate myconda
-
-# Load any modules or software you need
-module load cuda/12.0
+conda activate rl
 
 # Run your command or script
-python my_analysis.py
+python ppo.py
