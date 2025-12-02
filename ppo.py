@@ -58,10 +58,35 @@ class Args:
     minibatch_size: int = 0
     num_iterations: int = 0
 
-    clip_actions: bool = True  # NEW: toggle action clipping
+    clip_actions: bool = False
+    reward_hack: bool = True
+
+class RewardHackWrapper(gym.Wrapper):
+    """
+    Overrides reward using BG (blood glucose) from observation.
+    Assumes obs is flattened or dict with key 'BG'—you may need to adjust
+    depending on your env’s observation structure.
+    """
+    def reward_from_bg(self, obs):
+        # If FlattenObservation: BG is usually feature 0
+        bg = None
+        if isinstance(obs, dict):
+            bg = float(obs.get("BG", 110))
+        else:
+            bg = float(obs[0])  # flatten → BG is index 0 typically
+        
+        if 70 <= bg <= 180:
+            return 0.0
+        else:
+            return -abs(bg - 125) / 50.0
+
+    def step(self, action):
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        hacked_reward = self.reward_from_bg(obs)
+        return obs, hacked_reward, terminated, truncated, info
 
 
-def make_env(env_id, patient, patient_name_hash, render_mode=None):
+def make_env(env_id, patient, patient_name_hash, render_mode=None,  reward_hack=True):
     register(
         id=f"simglucose/{patient}-v0",
         entry_point="simglucose.envs:T1DSimGymnaisumEnv",
@@ -76,6 +101,8 @@ def make_env(env_id, patient, patient_name_hash, render_mode=None):
         # Flatten dict observation → continuous vector
         if isinstance(env.observation_space, gym.spaces.Dict):
             env = FlattenObservation(env)
+        if reward_hack:
+            env = RewardHackWrapper(env)
         return env
     return thunk
 
@@ -93,7 +120,7 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
 # Agent (continuous actions)
 # ----------------------------
 class AgentContinuous(nn.Module):
-    def __init__(self, obs_dim, act_dim, act_low, act_high, clip_actions=True):
+    def __init__(self, obs_dim, act_dim, act_low, act_high, clip_actions=False):
         super().__init__()
         # Critic
         self.critic = nn.Sequential(
@@ -185,7 +212,7 @@ def main():
 
     # vectorized envs
     envs = gym.vector.SyncVectorEnv(
-        [make_env(args.env_id, args.patient, args.patient_name_hash, None) for i in range(args.num_envs)]
+        [make_env(args.env_id, args.patient, args.patient_name_hash, None, args.reward_hack) for i in range(args.num_envs)]
     )
 
     # ensure Box action space
@@ -198,7 +225,7 @@ def main():
     act_low = envs.single_action_space.low
     act_high = envs.single_action_space.high
 
-    agent = AgentContinuous(obs_dim, act_dim, act_low, act_high).to(device)
+    agent = AgentContinuous(obs_dim, act_dim, act_low, act_high, clip_actions=args.clip_actions).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
     # STORAGE: keep as torch tensors on device (CleanRL style)
