@@ -11,6 +11,7 @@
 # Load your shell environment to activate your Conda environment
 source /home/user/.bashrc
 conda activate rl
+pip install -r requirements_cluster.txt
 
 # Run your command or script
 python ppo.py
