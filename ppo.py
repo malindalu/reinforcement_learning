@@ -80,10 +80,14 @@ class RewardHackWrapper(gym.Wrapper):
         else:
             bg = float(obs[0])  # flatten → BG is index 0 typically
         
+        # if 70 <= bg <= 180:
+        #     return 0.0
+        # else:
+        #     return -abs(bg - 125) / 50.0
         if 70 <= bg <= 180:
-            return 0.0
+            return +1.0
         else:
-            return -abs(bg - 125) / 50.0
+            return 1.0 - abs(bg - 125) / 50.0  # can go negative but good control ≈ +1/step
 
     def step(self, action):
         obs, reward, terminated, truncated, info = self.env.step(action)
