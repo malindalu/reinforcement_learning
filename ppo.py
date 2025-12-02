@@ -129,7 +129,7 @@ def make_env(env_id, patient, patient_name_hash, render_mode=None,  reward_hack=
     register(
         id=f"simglucose/{patient}-v0",
         entry_point="simglucose.envs:T1DSimGymnaisumEnv",
-        max_episode_steps=10,
+        max_episode_steps=288,
         kwargs={"patient_name": patient_name_hash},
     )
     env_id = f"simglucose/{patient}-v0"
@@ -221,7 +221,7 @@ def main():
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
     args.num_iterations = args.total_timesteps // args.batch_size
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}__{timestamp}"
+    run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}__{timestamp}_{'lagrangian' if args.use_lagrangian else 'standard'}"
 
     # optional tracking (WandB)
     if args.track:
