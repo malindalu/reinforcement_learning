@@ -27,6 +27,28 @@ from omnisafe.envs.core import CMDP, env_register
 
 from gymnasium.envs.registration import register
 import numpy as np
+import tyro
+from typing import Optional
+
+import omnisafe
+
+class Args:
+    # Experiment + environment settings
+    algo: str = "CPO"                     # CPO, PCPO, PPO-Lag, etc.
+    env_id: str = "simglucose/adolescent2-v0"
+
+    patient: str = "adolescent2"
+    patient_name_hash: str = "adolescent#002"
+
+    # RL settings
+    seed: int = 0
+    total_steps: int = 500000
+    cost_limit: float = 0.0
+
+    # Logging settings
+    use_wandb: bool = False
+    wandb_project: str = "SimGlucose-CPO"
+    wandb_entity: Optional[str] = None
 
 @env_register
 class SimGlucoseAdolescentEnv(CMDP):
@@ -119,29 +141,41 @@ class SimGlucoseAdolescentEnv(CMDP):
             # If your simglucose env supports gym seeding:
             self._env.reset(seed=seed)
 
-import omnisafe
 
-custom_cfgs = {
-    'seed': 0,
-    'algo_cfgs': {
-        'cost_limit': 0,
-    },
-    'train_cfgs': {
-        'total_steps': 1000,
-        # You can add more here if you want (batch_size, eval_interval, etc.)
-    },
-    # Optional: logging tweaks
-    'logger_cfgs': {
-        'use_wandb': False,
-    },
-}
+def build_config(args: Args):
+    return {
+        "seed": args.seed,
 
-# Instantiate your agent
-agent = omnisafe.Agent(
-    algo='CPO',                   # Algorithm
-    env_id= 'simglucose/adolescent2-v0',  # Your custom environment
-    custom_cfgs=custom_cfgs,
-)
+        "algo_cfgs": {
+            "cost_limit": args.cost_limit,     # constraint C ≤ limit
+        },
 
-# Train the agent
-agent.learn()
+        "train_cfgs": {
+            "total_steps": args.total_steps,
+        },
+
+        "logger_cfgs": {
+            "use_wandb": args.use_wandb,
+            "project": args.wandb_project,
+            "entity": args.wandb_entity,
+        },
+    }
+
+def main():
+    args = tyro.cli(Args)
+    cfgs = build_config(args)
+
+    print("Launching OmniSafe with config:")
+    print(cfgs)
+    # Instantiate your agent
+    agent = omnisafe.Agent(
+        algo='CPO',                   # Algorithm
+        env_id= 'simglucose/adolescent2-v0',  # Your custom environment
+        custom_cfgs=cfgs,
+    )
+
+    # Train the agent
+    agent.learn()
+
+if __name__ == "__main__":
+    main()

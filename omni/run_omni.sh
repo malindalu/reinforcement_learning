@@ -11,6 +11,9 @@
 # Load your shell environment to activate your Conda environment
 source /home/user/.bashrc
 conda activate rl_omni
+export PYTHONNOUSERSITE=1
+
+conda install pytorch numpy -c pytorch
 pip install -r requirements_cluster.txt
 
 # Run your command or script
