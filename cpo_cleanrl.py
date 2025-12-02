@@ -63,7 +63,7 @@ class Args:
     minibatch_size: int = 0
     num_iterations: int = 0
 
-    clip_actions: bool = True
+    clip_actions: bool = False
 
 
 # ----------------------------
@@ -99,7 +99,7 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
 # Agent with cost critic
 # ----------------------------
 class AgentContinuous(nn.Module):
-    def __init__(self, obs_dim, act_dim, act_low, act_high, clip_actions=True):
+    def __init__(self, obs_dim, act_dim, act_low, act_high, clip_actions=False):
         super().__init__()
         # Critic
         self.critic = nn.Sequential(
@@ -207,7 +207,7 @@ def main():
     act_low = envs.single_action_space.low
     act_high = envs.single_action_space.high
 
-    agent = AgentContinuous(obs_dim, act_dim, act_low, act_high).to(device)
+    agent = AgentContinuous(obs_dim, act_dim, act_low, act_high, clip_actions=args.clip_actions).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
     lambda_cost = torch.tensor(1.0, requires_grad=False, device=device)
