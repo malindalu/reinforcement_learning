@@ -59,7 +59,7 @@ class Args:
     num_iterations: int = 0
 
     clip_actions: bool = False
-    reward_hack: bool = True
+    reward_hack: bool = False
 
     use_lagrangian: bool = False  # NEW
     cost_limit: float = 10.0     # maximum allowed BG violation penalty
