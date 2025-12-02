@@ -29,9 +29,11 @@ from gymnasium.envs.registration import register
 import numpy as np
 import tyro
 from typing import Optional
+from dataclasses import dataclass
 
 import omnisafe
 
+@dataclass
 class Args:
     # Experiment + environment settings
     algo: str = "CPO"                     # CPO, PCPO, PPO-Lag, etc.
