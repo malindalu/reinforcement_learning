@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -p sched_mit_kburdge_r8      # partition name
+#SBATCH -p mit_normal_gpu      # partition name
 #SBATCH --job-name=cleanrl_cpo             # name for your job
 #SBATCH --gres=gpu:1                 # if you need GPUs
 #SBATCH --ntasks=1                   # number of tasks (often 1 for serial jobs)
