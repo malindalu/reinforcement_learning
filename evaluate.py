@@ -28,7 +28,16 @@ def load_trained_agent(model_path="runs/simglucose/adolescent2-v0__cpo_cleanrl__
     else: # model == "ppo"
         ModelAgent = PPOAgent  # Adjust if different agent class
     agent = ModelAgent(obs_dim=1, act_dim=1, act_low=-1, act_high=1)  # Adjust as necessary
-    agent.load_state_dict(torch.load(model_path))  # Load the model
+
+    if torch.cuda.is_available():
+        state_dict = torch.load(model_path)  # load directly to GPU
+        print("Loaded model on GPU.")
+    else:
+        state_dict = torch.load(model_path, map_location=torch.device("cpu"))
+        print("Loaded model on CPU (CUDA not available).")
+
+    agent.load_state_dict(state_dict)
+
     agent.eval()  # Switch to evaluation mode
     return agent
 
