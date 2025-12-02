@@ -118,9 +118,9 @@ class BGCostWrapper(gym.Wrapper):
     def cost_from_bg(self, obs):
         bg = obs[0] if not isinstance(obs, dict) else float(obs.get("BG", 110))
         if 70 <= bg <= 180:
-            return 0.0
+            return +1.0
         else:
-            return abs(bg - 125) / 50.0  # positive cost
+            return 1.0 - abs(bg - 125) / 50.0
 
     def step(self, action):
         obs, reward, terminated, truncated, info = self.env.step(action)
