@@ -73,7 +73,7 @@ def make_env(env_id, patient, patient_name_hash, render_mode=None):
     register(
         id=f"simglucose/{patient}-v0",
         entry_point="simglucose.envs:T1DSimGymnaisumEnv",
-        max_episode_steps=10,
+        max_episode_steps=288,
         kwargs={"patient_name": patient_name_hash},
     )
     env_id = f"simglucose/{patient}-v0"
@@ -154,9 +154,12 @@ class AgentContinuous(nn.Module):
 # Cost function
 # ----------------------------
 def cost_fn(next_obs):
-    # assuming glucose is index 0
     BG = next_obs[:, 0]
-    return (BG < 70).float()
+
+    hypo_cost  = torch.clamp(70 - BG, min=0)   
+    hyper_cost = torch.clamp(BG - 180, min=0)
+
+    return hypo_cost + hyper_cost
 
 
 # ----------------------------
@@ -249,7 +252,6 @@ def main():
 
             action_np = action.cpu().numpy()
             next_obs_np, reward_np, terminations, truncations, infos = envs.step(action_np)
-            print(next_obs_np)
             next_done = np.logical_or(terminations, truncations)
 
             next_obs = torch.Tensor(next_obs_np).to(device)
@@ -265,6 +267,14 @@ def main():
                     writer.add_scalar("charts/episodic_length", episode_lengths[i].item(), global_step)
                     episode_returns[i] = 0
                     episode_lengths[i] = 0
+
+        reward_mean = rewards.mean()
+        reward_std = rewards.std() + 1e-8
+        rewards = (rewards - reward_mean) / reward_std
+
+        cost_mean = costs.mean()
+        cost_std = costs.std() + 1e-8
+        costs = (costs - cost_mean) / cost_std
 
         # --- GAE for rewards ---
         with torch.no_grad():
