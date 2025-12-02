@@ -78,6 +78,7 @@ def plot_bg_trajectory(bg_trajectory, save_path="bg_trajectory.png"):
     plt.legend(loc="upper right")
     plt.grid(True)
 
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
     plt.show()
 

@@ -61,6 +61,11 @@ class Args:
     clip_actions: bool = False
     reward_hack: bool = True
 
+    use_lagrangian: bool = False  # NEW
+    cost_limit: float = 10.0     # maximum allowed BG violation penalty
+    lagrangian_multiplier_init: float = 0.001
+    lagrangian_multiplier_lr: float = 0.035
+
 class RewardHackWrapper(gym.Wrapper):
     """
     Overrides reward using BG (blood glucose) from observation.
@@ -85,8 +90,42 @@ class RewardHackWrapper(gym.Wrapper):
         hacked_reward = self.reward_from_bg(obs)
         return obs, hacked_reward, terminated, truncated, info
 
+class Lagrange:
+    def __init__(self, cost_limit=10.0, lagrangian_multiplier_init=0.001, lagrangian_multiplier_lr=0.035):
+        self.cost_limit = cost_limit
+        self.lagrangian_multiplier = torch.tensor(
+            lagrangian_multiplier_init, 
+            dtype=torch.float32, 
+            requires_grad=True
+        )
+        self.optimizer = torch.optim.Adam([self.lagrangian_multiplier], lr=lagrangian_multiplier_lr)
 
-def make_env(env_id, patient, patient_name_hash, render_mode=None,  reward_hack=True):
+    def update_lagrange_multiplier(self, ep_cost):
+        loss = -self.lagrangian_multiplier * (ep_cost - self.cost_limit)
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+        self.lagrangian_multiplier.data.clamp_(0.0)
+
+class BGCostWrapper(gym.Wrapper):
+    """
+    Computes cost for BG outside safe range
+    """
+    def cost_from_bg(self, obs):
+        bg = obs[0] if not isinstance(obs, dict) else float(obs.get("BG", 110))
+        if 70 <= bg <= 180:
+            return 0.0
+        else:
+            return abs(bg - 125) / 50.0  # positive cost
+
+    def step(self, action):
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        cost = self.cost_from_bg(obs)
+        info['cost'] = cost
+        return obs, reward, terminated, truncated, info
+
+
+def make_env(env_id, patient, patient_name_hash, render_mode=None,  reward_hack=True, use_lagrangian=False):
     register(
         id=f"simglucose/{patient}-v0",
         entry_point="simglucose.envs:T1DSimGymnaisumEnv",
@@ -103,6 +142,8 @@ def make_env(env_id, patient, patient_name_hash, render_mode=None,  reward_hack=
             env = FlattenObservation(env)
         if reward_hack:
             env = RewardHackWrapper(env)
+        if use_lagrangian:
+            env = BGCostWrapper(env)
         return env
     return thunk
 
@@ -212,7 +253,7 @@ def main():
 
     # vectorized envs
     envs = gym.vector.SyncVectorEnv(
-        [make_env(args.env_id, args.patient, args.patient_name_hash, None, args.reward_hack) for i in range(args.num_envs)]
+        [make_env(args.env_id, args.patient, args.patient_name_hash, None, args.reward_hack, args.use_lagrangian) for i in range(args.num_envs)]
     )
 
     # ensure Box action space
@@ -245,6 +286,14 @@ def main():
 
     episode_returns = torch.zeros(args.num_envs).to(device)
     episode_lengths = torch.zeros(args.num_envs).to(device)
+    episode_costs = torch.zeros(args.num_envs).to(device)
+
+    costs = torch.zeros((args.num_steps, args.num_envs)).to(device)
+
+    if args.use_lagrangian:
+        print("Using Lagrangian for cost constraints.")
+        lagrange = Lagrange(args.cost_limit, args.lagrangian_multiplier_init, args.lagrangian_multiplier_lr)
+
 
     for iteration in range(1, args.num_iterations + 1):
         # anneal lr
@@ -277,6 +326,19 @@ def main():
             rewards[step] = torch.tensor(reward_np, dtype=torch.float32).to(device)
             next_done = torch.Tensor(next_done).to(device)
 
+            if args.use_lagrangian:
+                if isinstance(infos, dict):
+                    infos = [infos]
+                step_costs = torch.tensor(
+                    [float(info.get("cost", 0.0)) for info in infos],
+                    dtype=torch.float32,
+                    device=device
+                ).view(-1)  # flatten to 1D, shape = [num_envs]device
+
+                print(step_costs)
+                costs[step] = step_costs
+                episode_costs += step_costs
+
             episode_returns += rewards[step]
             episode_lengths += 1
 
@@ -294,6 +356,12 @@ def main():
                         print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
                         writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
                         writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
+                        if args.use_lagrangian:
+                            writer.add_scalar("charts/episodic_cost", episode_costs[i].item(), global_step)
+                            episode_costs[i] = 0  # reset cost for next episode
+                        episode_returns[i] = 0
+                        episode_lengths[i] = 0
+                            
 
         # bootstrap value for last obs
         with torch.no_grad():
@@ -315,6 +383,17 @@ def main():
             advantages[t] = lastgaelam
 
         returns = advantages + values
+
+        if args.use_lagrangian:
+            cost_advantages = torch.zeros_like(costs).to(device)
+            last_costgae = 0
+            for t in reversed(range(args.num_steps)):
+                nextnonterminal = 1.0 - (next_done if t == args.num_steps - 1 else dones[t + 1])
+                nextvalues = torch.zeros_like(costs[0]) if t == args.num_steps - 1 else costs[t + 1]
+                delta = costs[t] + args.gamma * nextvalues * nextnonterminal - costs[t]
+                last_costgae = delta + args.gamma * args.gae_lambda * nextnonterminal * last_costgae
+                cost_advantages[t] = last_costgae
+
 
         # flatten the batch (CleanRL pattern)
         b_obs = obs.reshape((-1,) + obs_shape)
@@ -379,6 +458,12 @@ def main():
 
             if args.target_kl is not None and approx_kl > args.target_kl:
                 break
+        
+        if args.use_lagrangian:
+            avg_ep_cost = episode_costs.mean().item()
+            lagrange.update_lagrange_multiplier(avg_ep_cost)
+            writer.add_scalar("charts/lagrangian_multiplier", lagrange.lagrangian_multiplier.item(), global_step)
+
 
         # diagnostics
         y_pred, y_true = b_values.cpu().numpy(), b_returns.cpu().numpy()
