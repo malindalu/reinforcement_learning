@@ -18,6 +18,7 @@ import os
 import argparse
 
 import omnisafe
+from gymnasium.envs.registration import register
 
 
 def main():
@@ -72,4 +73,10 @@ def main():
 
 
 if __name__ == "__main__":
+    register(
+            id="simglucose/adolescent2-v0",
+            entry_point="simglucose.envs:T1DSimGymnaisumEnv",
+            max_episode_steps=288,
+            kwargs={"patient_name": "adolescent#002"},
+        )
     main()
