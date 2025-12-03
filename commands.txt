@@ -5,8 +5,18 @@ tensorboard --logdir runs
 # TO SAVE GRAPHS TO DIRECTORY
 
 python export_tensorboard_images.py \
-    --logdir runs/simglucose/adolescent2-v0__ppo__1__1764663220__2025-12-02_03-13-40 \
-    --out plots/adolescent2-v0__ppo__1__1764663220__2025-12-02_03-13-40
+    --logdir runs/simglucose/adolescent2-v0__ppo__1__1764777395__2025-12-03_10-56-35_lagrangian \
+    --out plots/adolescent2-v0__ppo__1__1764777395__2025-12-03_10-56-35_lagrangian
+
+python evaluate.py --model_full_path runs/simglucose/adolescent2-v0__ppo__1__1764777395__2025-12-03_10-56-35_lagrangian/adolescent2_ppo.pt \
+    --model ppo \
+    --model_path adolescent2-v0__ppo__1__1764777395__2025-12-03_10-56-35_lagrangian
+
+python evaluate_with_lag.py --model_full_path runs/simglucose/adolescent2-v0__ppo__1__1764777395__2025-12-03_10-56-35_lagrangian/adolescent2_ppo.pt \
+    --model ppo \
+    --model_path adolescent2-v0__ppo__1__1764777395__2025-12-03_10-56-35_lagrangian \
+    --lag_steps 2 \
+
 
 python ppo.py \
     --patient adolescent2 \
@@ -23,7 +33,9 @@ python export_tensorboard_images.py \
     --logdir logs/adolescent2/tb \
     --out logs/plots/adolescent2
 
-# EVAL 
+# OMNI
+python evaluate.py \
+  --log-dir runs/PPOLag-{simglucose/adolescent2-v0}/seed-000-2025-12-03-11-29-33
+  --episodes 1 \
+  --render-mode human
 
-python evaluate.py --model_path runs/simglucose/adolescent2-v0__ppo__1__1764624266__2025-12-01_16-24-26/adolescent2_ppo.pt \
-    --model ppo
