@@ -7,6 +7,7 @@ import random
 import time
 from dataclasses import dataclass
 from datetime import datetime
+from collections import deque  # <<< NEW
 
 import gymnasium as gym
 import numpy as np
@@ -58,7 +59,7 @@ class Args:
     # CPO / Lagrangian
     cost_threshold: float = 1.0     # desired average discounted cost per step
     cost_lr: float = 1e-2           # step size for lambda update
-    cost_method: str = "time_outside" 
+    cost_method: str = "time_outside"
 
     # runtime filled
     batch_size: int = 0
@@ -164,7 +165,7 @@ class AgentContinuous(nn.Module):
 
 
 # ----------------------------
-# Cost function in BG space (same semantics as your original)
+# Cost functions in BG space
 # ----------------------------
 def cost_proportion_to_condition(next_obs: torch.Tensor) -> torch.Tensor:
     """
@@ -175,6 +176,7 @@ def cost_proportion_to_condition(next_obs: torch.Tensor) -> torch.Tensor:
     hypo_cost = torch.clamp(70.0 - BG, min=0.0)
     hyper_cost = torch.clamp(BG - 180.0, min=0.0)
     return hypo_cost + hyper_cost
+
 
 def cost_time_outside(next_obs: torch.Tensor) -> torch.Tensor:
     BG = next_obs[:, 0]
@@ -271,6 +273,8 @@ def main():
     episode_lengths = torch.zeros(args.num_envs).to(device)
     episode_costs = torch.zeros(args.num_envs).to(device)
 
+    recent_mean_rewards = deque(maxlen=100)  # <<< NEW
+
     global_step = 0
     start_time = time.time()
 
@@ -310,9 +314,26 @@ def main():
 
             for i, done_flag in enumerate(next_done):
                 if done_flag:
-                    writer.add_scalar("charts/episodic_return", episode_returns[i].item(), global_step)
-                    writer.add_scalar("charts/episodic_cost", episode_costs[i].item(), global_step)
-                    writer.add_scalar("charts/episodic_length", episode_lengths[i].item(), global_step)
+                    ep_ret = episode_returns[i].item()
+                    ep_len = episode_lengths[i].item()
+                    ep_cost = episode_costs[i].item()
+                    ep_mean_reward = ep_ret / max(ep_len, 1.0)  # <<< NEW
+
+                    writer.add_scalar("charts/episodic_return", ep_ret, global_step)
+                    writer.add_scalar("charts/episodic_cost", ep_cost, global_step)
+                    writer.add_scalar("charts/episodic_length", ep_len, global_step)
+                    writer.add_scalar("charts/mean_reward", ep_mean_reward, global_step)  # <<< NEW
+
+                    # rolling 100-episode mean & band (same as PPO)  # <<< NEW
+                    recent_mean_rewards.append(ep_mean_reward)
+                    if len(recent_mean_rewards) > 1:
+                        window = np.array(recent_mean_rewards, dtype=np.float32)
+                        m = window.mean()
+                        s = window.std()
+                        writer.add_scalar("charts/episodic_mean_reward_rolling100", m, global_step)
+                        writer.add_scalar("charts/episodic_mean_reward_rolling100_plus1std", m + s, global_step)
+                        writer.add_scalar("charts/episodic_mean_reward_rolling100_minus1std", m - s, global_step)
+
                     episode_returns[i] = 0.0
                     episode_costs[i] = 0.0
                     episode_lengths[i] = 0.0
