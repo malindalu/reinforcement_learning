@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from gymnasium.envs.registration import register
 from simglucose.envs import T1DSimGymnaisumEnv  # Make sure this is available
-from cpo_cleanrl import AgentContinuous as CPOAgent # Adjust import for your agent
+from cpo import AgentContinuous as CPOAgent # Adjust import for your agent
 from ppo import AgentContinuous as PPOAgent  # Adjust import for your agent
 
 # 1. Register the environment for testing (with 24-hour horizon)
@@ -28,7 +28,7 @@ def make_test_env(patient="adolescent2", patient_name_hash="adolescent#002"):
 def load_trained_agent(env,
                        model_path="runs/simglucose/adolescent2-v0__cpo_cleanrl__1__1764654879__2025-12-02_00-54-39/adolescent2_cpo.pt",
                        model="cpo_cleanrl"):
-    if model == "cpo_cleanrl":
+    if model == "cpo":
         ModelAgent = CPOAgent
     else:  # model == "ppo"
         ModelAgent = PPOAgent
@@ -166,8 +166,8 @@ def plot_bg_and_control_side_by_side(bg_trajectory, u_trajectory, save_path="bg_
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, default="cpo_cleanrl",
-                        choices=["cpo_cleanrl", "ppo"])
+    parser.add_argument("--model", type=str, default="cpo",
+                        choices=["cpo", "ppo"])
     parser.add_argument("--model_full_path", type=str, required=True)
     parser.add_argument("--model_path", type=str, required=True)
     parser.add_argument("--patient", type=str, default="adolescent2")
