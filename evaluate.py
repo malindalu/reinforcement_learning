@@ -70,7 +70,6 @@ def evaluate_policy(agent, env, num_steps=288, seed=123):
         # Get action from policy (deterministic: no exploration noise)
         with torch.no_grad():
             mu = agent.actor_mean(obs)  # Determine the mean action (no noise)
-        print(mu)
         action = torch.clamp(mu, agent.act_low, agent.act_high)
         action_np = action.cpu().numpy().reshape(env.action_space.shape)
 
