@@ -63,9 +63,10 @@ class Args:
     reward_hack: bool = False
 
     use_lagrangian: bool = False  # NEW
-    cost_limit: float = 10.0     # maximum allowed BG violation penalty
+    cost_limit: float = 0.1     # maximum allowed BG violation penalty
     lagrangian_multiplier_init: float = 0.001
     lagrangian_multiplier_lr: float = 0.035
+    lagrangian_cost: int = 2
 
 class RewardHackWrapper(gym.Wrapper):
     """
@@ -129,8 +130,13 @@ class BGCostWrapper(gym.Wrapper):
         info['cost'] = cost
         return obs, reward, terminated, truncated, info
 
+class BGTimeOutsideCostWrapper(BGCostWrapper):
+    def cost_from_bg(self, obs):
+        bg = obs[0] if not isinstance(obs, dict) else float(obs.get("BG", 110))
+        # 1 if outside [70,180], else 0
+        return 1.0 if (bg < 70 or bg > 180) else 0.0
 
-def make_env(env_id, patient, patient_name_hash, render_mode=None,  reward_hack=True, use_lagrangian=False):
+def make_env(env_id, patient, patient_name_hash, render_mode=None,  reward_hack=True, use_lagrangian=False, lag_cost_method=1):
     register(
         id=f"simglucose/{patient}-v0",
         entry_point="simglucose.envs:T1DSimGymnaisumEnv",
@@ -148,7 +154,10 @@ def make_env(env_id, patient, patient_name_hash, render_mode=None,  reward_hack=
         if reward_hack:
             env = RewardHackWrapper(env)
         if use_lagrangian:
-            env = BGCostWrapper(env)
+            if lag_cost_method == 1:
+                env = BGCostWrapper(env)
+            else:
+                env = BGTimeOutsideCostWrapper(env)
         return env
     return thunk
 
@@ -266,7 +275,7 @@ def main():
 
     # vectorized envs
     envs = gym.vector.SyncVectorEnv(
-        [make_env(args.env_id, args.patient, args.patient_name_hash, None, args.reward_hack, args.use_lagrangian) for i in range(args.num_envs)]
+        [make_env(args.env_id, args.patient, args.patient_name_hash, None, args.reward_hack, args.use_lagrangian, args.lagrangian_cost) for i in range(args.num_envs)]
     )
 
     # ensure Box action space
@@ -355,7 +364,6 @@ def main():
                     device=device
                 ).view(-1)  # flatten to 1D, shape = [num_envs]device
 
-                print(step_costs)
                 costs[step] = step_costs
                 episode_costs += step_costs
 
@@ -383,9 +391,12 @@ def main():
                         writer.add_scalar("charts/episodic_mean_reward_rolling100_plus1std", m + s, global_step)
                         writer.add_scalar("charts/episodic_mean_reward_rolling100_minus1std", m - s, global_step)
 
+                    if args.use_lagrangian:
+                        writer.add_scalar("charts/episodic_cost", episode_costs[i].item(), global_step)
+                        episode_costs[i] = 0.0   # <-- RESET COST HERE
 
                     episode_returns[i] = 0
-                    episode_lengths[i] = 0
+                    episode_lengths[i] = 0    
 
 
             # # logging episode returns for finished episodes
@@ -424,14 +435,15 @@ def main():
         returns = advantages + values
 
         if args.use_lagrangian:
-            cost_advantages = torch.zeros_like(costs).to(device)
-            last_costgae = 0
+            cost_returns = torch.zeros_like(costs).to(device)
+            last_cost_return = 0
             for t in reversed(range(args.num_steps)):
-                nextnonterminal = 1.0 - (next_done if t == args.num_steps - 1 else dones[t + 1])
-                nextvalues = torch.zeros_like(costs[0]) if t == args.num_steps - 1 else costs[t + 1]
-                delta = costs[t] + args.gamma * nextvalues * nextnonterminal - costs[t]
-                last_costgae = delta + args.gamma * args.gae_lambda * nextnonterminal * last_costgae
-                cost_advantages[t] = last_costgae
+                if t == args.num_steps - 1:
+                    nextnonterminal = 1.0 - next_done
+                else:
+                    nextnonterminal = 1.0 - dones[t + 1]
+                last_cost_return = costs[t] + args.gamma * nextnonterminal * last_cost_return
+                cost_returns[t] = last_cost_return
 
 
         # flatten the batch (CleanRL pattern)
@@ -441,6 +453,9 @@ def main():
         b_advantages = advantages.reshape(-1)
         b_returns = returns.reshape(-1)
         b_values = values.reshape(-1)
+
+        if args.use_lagrangian:
+            b_cost_returns = cost_returns.reshape(-1)
 
         # convert to proper types for agent (actor expects flat obs vector)
         # when passing to agent.get_action_and_value later, we will reshape as needed
@@ -466,6 +481,16 @@ def main():
                     clipfracs += [((ratio - 1.0).abs() > args.clip_coef).float().mean().item()]
 
                 mb_advantages = b_advantages[mb_inds].to(device)
+                
+                if args.use_lagrangian:
+                    # cost-to-go for this minibatch
+                    mb_cost = b_cost_returns[mb_inds].to(device)
+                    if args.norm_adv:
+                        mb_cost = (mb_cost - mb_cost.mean()) / (mb_cost.std() + 1e-8)
+                    # effective advantage: A_eff = A_r - λ * A_c
+                    lam = lagrange.lagrangian_multiplier.detach()
+                    mb_advantages = mb_advantages - lam * mb_cost
+
                 if args.norm_adv:
                     mb_advantages = (mb_advantages - mb_advantages.mean()) / (mb_advantages.std() + 1e-8)
 
@@ -486,6 +511,7 @@ def main():
                     v_loss = 0.5 * v_loss_max.mean()
                 else:
                     v_loss = 0.5 * ((newvalue - b_returns[mb_inds].to(device)) ** 2).mean()
+            
 
                 entropy_loss = entropy.mean()
                 loss = pg_loss - args.ent_coef * entropy_loss + v_loss * args.vf_coef
@@ -499,11 +525,12 @@ def main():
                 break
         
         if args.use_lagrangian:
-            avg_ep_cost = episode_costs.mean().item()
-            lagrange.update_lagrange_multiplier(avg_ep_cost)
-            writer.add_scalar("charts/lagrangian_multiplier", lagrange.lagrangian_multiplier.item(), global_step)
-
-
+            # Average discounted cost per time step in this batch
+            avg_batch_cost = costs.mean().item()
+            lagrange.update_lagrange_multiplier(avg_batch_cost)
+            writer.add_scalar("charts/lagrangian_multiplier",
+                            lagrange.lagrangian_multiplier.item(), global_step)
+            writer.add_scalar("charts/batch_avg_cost", avg_batch_cost, global_step)
         # diagnostics
         y_pred, y_true = b_values.cpu().numpy(), b_returns.cpu().numpy()
         var_y = np.var(y_true)
