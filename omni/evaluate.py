@@ -55,7 +55,7 @@ def main():
     if not os.path.isdir(torch_save_dir):
         raise FileNotFoundError(f"'torch_save' directory not found at: {torch_save_dir}")
 
-    evaluator = omnisafe.Evaluator(render_mode="rgb_array")
+    evaluator = omnisafe.Evaluator(render_mode="human")
 
     # Loop through all saved checkpoints (*.pt) in torch_save
     with os.scandir(torch_save_dir) as it:
