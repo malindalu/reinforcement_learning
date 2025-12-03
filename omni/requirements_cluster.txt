@@ -2,3 +2,4 @@ omnisafe
 gymnasium
 simglucose
 tyro
+tensorboard
