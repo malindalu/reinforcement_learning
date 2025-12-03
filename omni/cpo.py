@@ -111,7 +111,6 @@ class SimGlucoseAdolescentEnv(CMDP):
         obs, reward, terminated, truncated, info = self._env.step(action.numpy())
         # Define cost for safe RL; e.g., glucose out-of-range risk
         cost = torch.as_tensor(self.compute_cost(obs), dtype=torch.float32)
-        print(cost)
 
         self._count += 1
         truncated = torch.as_tensor(truncated or self._count >= self.max_episode_steps)
