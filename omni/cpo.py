@@ -45,12 +45,16 @@ class Args:
     # RL settings
     seed: int = 0
     total_steps: int = 500000
-    cost_limit: float = 0.0
+    cost_limit: float = 10.0
 
     # Logging settings
     use_wandb: bool = False
     wandb_project: str = "SimGlucose-CPO"
     wandb_entity: Optional[str] = None
+
+    normalize_obs: bool = False
+    normalize_rew: bool = False
+    normalize_cost: bool = False
 
 @env_register
 class SimGlucoseAdolescentEnv(CMDP):
@@ -95,8 +99,10 @@ class SimGlucoseAdolescentEnv(CMDP):
         """Return a cost for unsafe glucose levels."""
         bg = obs[0].item()
         # Example: penalize hypoglycemia (<70) and hyperglycemia (>180)
-        if bg < 70 or bg > 180:
-            return 1.0
+        if bg < 70:
+            return (70 - bg) / 70.0          # larger cost for deeper hypos
+        elif bg > 180:
+            return (bg - 180) / 180.0        # larger cost for extreme hyper
         return 0.0
 
     def step(
@@ -154,6 +160,12 @@ def build_config(args: Args):
 
         "train_cfgs": {
             "total_steps": args.total_steps,
+        },
+
+        "env_cfgs": {
+            "normalize_obs": args.normalize_obs,
+            "normalize_rew": args.normalize_rew,
+            "normalize_cost": args.normalize_cost,
         },
 
         "logger_cfgs": {
