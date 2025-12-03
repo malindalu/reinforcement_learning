@@ -160,13 +160,14 @@ def build_config(args: Args):
 
         "train_cfgs": {
             "total_steps": args.total_steps,
+            "device": "cuda" if torch.cuda.is_available() else "cpu"
         },
 
-        "env_cfgs": {
-            "normalize_obs": args.normalize_obs,
-            "normalize_rew": args.normalize_rew,
-            "normalize_cost": args.normalize_cost,
-        },
+        # "env_cfgs": {
+        #     "normalize_obs": args.normalize_obs,
+        #     "normalize_rew": args.normalize_rew,
+        #     "normalize_cost": args.normalize_cost,
+        # },
 
         "logger_cfgs": {
             "use_wandb": args.use_wandb,
