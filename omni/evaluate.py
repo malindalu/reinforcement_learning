@@ -20,6 +20,8 @@ import argparse
 import omnisafe
 from gymnasium.envs.registration import register
 
+from cpo import *
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -38,13 +40,13 @@ def main():
         default=1,
         help="Number of episodes to render/evaluate per checkpoint.",
     )
-    parser.add_argument(
-        "--render-mode",
-        type=str,
-        default="rgb_array",
-        choices=["human", "rgb_array"],
-        help="Render mode passed to omnisafe.Evaluator.",
-    )
+    # parser.add_argument(
+    #     "--render-mode",
+    #     type=str,
+    #     default="rgb_array",
+    #     choices=["human", "rgb_array"],
+    #     help="Render mode passed to omnisafe.Evaluator.",
+    # )
     args = parser.parse_args()
 
     log_dir = os.path.expanduser(args.log_dir)
@@ -53,7 +55,7 @@ def main():
     if not os.path.isdir(torch_save_dir):
         raise FileNotFoundError(f"'torch_save' directory not found at: {torch_save_dir}")
 
-    evaluator = omnisafe.Evaluator(render_mode=args.render_mode)
+    evaluator = omnisafe.Evaluator(render_mode="rgb_array")
 
     # Loop through all saved checkpoints (*.pt) in torch_save
     with os.scandir(torch_save_dir) as it:
