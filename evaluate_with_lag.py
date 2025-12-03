@@ -1,7 +1,23 @@
 import torch
 import numpy as np
 import argparse
+import matplotlib.pyplot as plt
+import os
 from evaluate import make_test_env, load_trained_agent, plot_bg_and_control_side_by_side
+
+def compute_time_in_range(bg_trajectory, low=70.0, high=180.0):
+    """
+    Returns time-in-range (%) for BG trajectory.
+
+    bg_trajectory: 1D array-like of BG values (mg/dL)
+    low, high: bounds for "in range"
+    """
+    bg = np.asarray(bg_trajectory, dtype=float)
+    if bg.size == 0:
+        return 0.0
+    in_range = (bg >= low) & (bg <= high)
+    return in_range.mean() * 100.0
+
 
 def evaluate_policy(agent, env, num_steps=288, seed=123, lag_steps=0):
     """
@@ -65,6 +81,57 @@ def evaluate_policy(agent, env, num_steps=288, seed=123, lag_steps=0):
 
     return np.array(bg_trajectory), np.array(u_trajectory)
 
+def sweep_lag_steps(
+    agent,
+    env,
+    lag_steps_list,
+    num_steps=288,
+    seed=123,
+    tir_low=70.0,
+    tir_high=180.0,
+    save_path="plots/lag_sweep_time_in_range.png",
+):
+    """
+    For each lag in lag_steps_list:
+      - run evaluate_policy(..., lag_steps=lag)
+      - compute time-in-range for BG
+      - plot TIR vs lag
+
+    Returns: (lag_steps_list, tir_values) as numpy arrays
+    """
+    tir_values = []
+
+    for lag in lag_steps_list:
+        print(f"\n=== Evaluating lag_steps = {lag} ===")
+        bg_trajectory, u_trajectory = evaluate_policy(
+            agent,
+            env,
+            num_steps=num_steps,
+            seed=seed,
+            lag_steps=lag,
+        )
+        tir = compute_time_in_range(bg_trajectory, low=tir_low, high=tir_high)
+        tir_values.append(tir)
+        print(f"Lag {lag}: TIR = {tir:.2f}% over {len(bg_trajectory)} steps")
+
+    lag_steps_arr = np.array(lag_steps_list, dtype=int)
+    tir_values_arr = np.array(tir_values, dtype=float)
+
+    # ---- Plot ----
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.plot(lag_steps_arr, tir_values_arr, marker="o")
+    ax.set_xlabel("Lag (env steps)")
+    ax.set_ylabel(f"Time in range {tir_low:.0f}–{tir_high:.0f} mg/dL (%)")
+    ax.set_title("Effect of insulin action lag on time-in-range")
+    ax.grid(True)
+
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    plt.savefig(save_path, dpi=300, bbox_inches="tight")
+    plt.show()
+
+    return lag_steps_arr, tir_values_arr
+
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -75,6 +142,7 @@ def main():
     parser.add_argument("--patient", type=str, default="adolescent2")
     parser.add_argument("--patient_hash", type=str, default="adolescent#002")
     parser.add_argument("--seed", type=int, default=123)
+    parser.add_argument("--plot_lag_sensitivity", type=bool, default=True)
     parser.add_argument(
         "--lag_steps",
         type=int,
@@ -103,6 +171,19 @@ def main():
         u_trajectory,
         save_path=f"plots/{args.model_path}/bg_and_control_trajectory_eval_lag{args.lag_steps}.png",
     )
+
+    if args.plot_lag_sensitivity:
+        lag_steps_list = list(range(0, 20, 2))
+        sweep_lag_steps(
+            agent,
+            env,
+            lag_steps_list=lag_steps_list,
+            num_steps=288,
+            seed=args.seed,
+            tir_low=70.0,
+            tir_high=180.0,
+            save_path=f"plots/{args.model_path}/lag_sweep_time_in_range.png",
+        )
 
     env.close()
 
