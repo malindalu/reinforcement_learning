@@ -61,6 +61,7 @@ class Args:
 
     clip_actions: bool = False
     reward_hack: bool = False
+    action_initial_bias: float = 5.0
 
     use_lagrangian: bool = False  # NEW
     cost_limit: float = 0.1     # maximum allowed BG violation penalty
@@ -175,7 +176,7 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
 # Agent (continuous actions)
 # ----------------------------
 class AgentContinuous(nn.Module):
-    def __init__(self, obs_dim, act_dim, act_low, act_high, clip_actions=False):
+    def __init__(self, obs_dim, act_dim, act_low, act_high, clip_actions=False, action_initial_bias=5.0):
         super().__init__()
         # Critic
         self.critic = nn.Sequential(
@@ -191,7 +192,7 @@ class AgentContinuous(nn.Module):
             nn.Tanh(),
             layer_init(nn.Linear(64, 64)),
             nn.Tanh(),
-            layer_init(nn.Linear(64, act_dim), std=0.01, bias_const=15),
+            layer_init(nn.Linear(64, act_dim), std=0.01, bias_const=action_initial_bias),
         )
         # learnable logstd (one per action dim)
         self.logstd = nn.Parameter(torch.zeros(act_dim))
@@ -288,7 +289,7 @@ def main():
     act_low = envs.single_action_space.low
     act_high = envs.single_action_space.high
 
-    agent = AgentContinuous(obs_dim, act_dim, act_low, act_high, clip_actions=args.clip_actions).to(device)
+    agent = AgentContinuous(obs_dim, act_dim, act_low, act_high, clip_actions=args.clip_actions, action_initial_bias=args.action_initial_bias).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
     # STORAGE: keep as torch tensors on device (CleanRL style)
