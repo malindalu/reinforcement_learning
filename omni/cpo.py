@@ -158,8 +158,6 @@ def build_config(args: Args):
 
         "logger_cfgs": {
             "use_wandb": args.use_wandb,
-            "project": args.wandb_project,
-            "entity": args.wandb_entity,
         },
     }
 
