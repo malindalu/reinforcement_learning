@@ -62,12 +62,13 @@ class Args:
     clip_actions: bool = False
     reward_hack: bool = False
     action_initial_bias: float = 5.0
+    reward_method: str = "proportional"  # "regioned" or "proportional"
 
     use_lagrangian: bool = False  # NEW
     cost_limit: float = 0.1     # maximum allowed BG violation penalty
     lagrangian_multiplier_init: float = 0.001
     lagrangian_multiplier_lr: float = 0.035
-    lagrangian_cost: int = 2
+    lagrangian_cost: str = "time_outside"  # "proportional" or "time_outside"
 
 class RewardHackWrapper(gym.Wrapper):
     """
@@ -82,11 +83,6 @@ class RewardHackWrapper(gym.Wrapper):
             bg = float(obs.get("BG", 110))
         else:
             bg = float(obs[0])  # flatten → BG is index 0 typically
-        
-        # if 70 <= bg <= 180:
-        #     return 0.0
-        # else:
-        #     return -abs(bg - 125) / 50.0
         if 70 <= bg <= 180:
             return +1.0
         else:
@@ -96,6 +92,21 @@ class RewardHackWrapper(gym.Wrapper):
         obs, reward, terminated, truncated, info = self.env.step(action)
         hacked_reward = self.reward_from_bg(obs)
         return obs, hacked_reward, terminated, truncated, info
+    
+class ProportionalRewardWrapper(RewardHackWrapper):
+    def reward_from_bg(self, obs):
+        # If FlattenObservation: BG is usually feature 0
+        bg = None
+        if isinstance(obs, dict):
+            bg = float(obs.get("BG", 110))
+        else:
+            bg = float(obs[0])  # flatten → BG is index 0 typically
+        
+        center = 125.0
+        scale = 55.0
+        reward = 1.0 - abs(bg - center) / scale
+
+        return reward
 
 class Lagrange:
     def __init__(self, cost_limit=10.0, lagrangian_multiplier_init=0.001, lagrangian_multiplier_lr=0.035):
@@ -137,7 +148,7 @@ class BGTimeOutsideCostWrapper(BGCostWrapper):
         # 1 if outside [70,180], else 0
         return 1.0 if (bg < 70 or bg > 180) else 0.0
 
-def make_env(env_id, patient, patient_name_hash, render_mode=None,  reward_hack=True, use_lagrangian=False, lag_cost_method=1):
+def make_env(env_id, patient, patient_name_hash, render_mode=None,  reward_hack=True, use_lagrangian=False, lag_cost_method="time_outside", reward_method = "proportional"):
     register(
         id=f"simglucose/{patient}-v0",
         entry_point="simglucose.envs:T1DSimGymnaisumEnv",
@@ -153,12 +164,15 @@ def make_env(env_id, patient, patient_name_hash, render_mode=None,  reward_hack=
         if isinstance(env.observation_space, gym.spaces.Dict):
             env = FlattenObservation(env)
         if reward_hack:
-            env = RewardHackWrapper(env)
+            if reward_method == "proportional":
+                env = ProportionalRewardWrapper(env)
+            else: # regioned
+                env = RewardHackWrapper(env)
         if use_lagrangian:
-            if lag_cost_method == 1:
-                env = BGCostWrapper(env)
-            else:
+            if lag_cost_method == "time_outside":
                 env = BGTimeOutsideCostWrapper(env)
+            else: # proportional
+                env = BGCostWrapper(env)
         return env
     return thunk
 
@@ -276,7 +290,14 @@ def main():
 
     # vectorized envs
     envs = gym.vector.SyncVectorEnv(
-        [make_env(args.env_id, args.patient, args.patient_name_hash, None, args.reward_hack, args.use_lagrangian, args.lagrangian_cost) for i in range(args.num_envs)]
+        [make_env(env_id=args.env_id, 
+                  patient=args.patient, 
+                  patient_name_hash=args.patient_name_hash, 
+                  render_mode=None, 
+                  reward_hack=args.reward_hack, 
+                  use_lagrangian=args.use_lagrangian, 
+                  lag_cost_method=args.lagrangian_cost, 
+                  reward_method=args.reward_method) for i in range(args.num_envs)]
     )
 
     # ensure Box action space
