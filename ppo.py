@@ -6,6 +6,7 @@ import random
 import time
 from dataclasses import dataclass
 from datetime import datetime
+from collections import deque
 
 import gymnasium as gym
 import numpy as np
@@ -181,7 +182,7 @@ class AgentContinuous(nn.Module):
             nn.Tanh(),
             layer_init(nn.Linear(64, 64)),
             nn.Tanh(),
-            layer_init(nn.Linear(64, act_dim), std=0.01),
+            layer_init(nn.Linear(64, act_dim), std=0.01, bias_const=15),
         )
         # learnable logstd (one per action dim)
         self.logstd = nn.Parameter(torch.zeros(act_dim))
@@ -300,6 +301,8 @@ def main():
     episode_lengths = torch.zeros(args.num_envs).to(device)
     episode_costs = torch.zeros(args.num_envs).to(device)
 
+    recent_mean_rewards = deque(maxlen=100)
+
     costs = torch.zeros((args.num_steps, args.num_envs)).to(device)
 
     if args.use_lagrangian:
@@ -336,6 +339,11 @@ def main():
             # convert to tensors
             next_obs = torch.Tensor(next_obs_np).to(device)
             rewards[step] = torch.tensor(reward_np, dtype=torch.float32).to(device)
+            writer.add_scalar(
+                "charts/step_mean_reward",
+                rewards[step].mean().item(),
+                global_step,
+            )
             next_done = torch.Tensor(next_done).to(device)
 
             if args.use_lagrangian:
@@ -356,23 +364,42 @@ def main():
 
             for i, done_flag in enumerate(next_done):
                 if done_flag:
+                    ep_ret = episode_returns[i].item()
+                    ep_len = episode_lengths[i].item()
+                    ep_mean_reward = ep_ret / max(ep_len, 1)
+                
                     writer.add_scalar("charts/episodic_return", episode_returns[i].item(), global_step)
                     writer.add_scalar("charts/episodic_length", episode_lengths[i].item(), global_step)
+                    writer.add_scalar("charts/mean_reward", ep_mean_reward, global_step)
+
+                    # add to rolling window for band
+                    recent_mean_rewards.append(ep_mean_reward)
+                    if len(recent_mean_rewards) > 1:
+                        window = np.array(recent_mean_rewards, dtype=np.float32)
+                        m = window.mean()
+                        s = window.std()
+
+                        writer.add_scalar("charts/episodic_mean_reward_rolling100", m, global_step)
+                        writer.add_scalar("charts/episodic_mean_reward_rolling100_plus1std", m + s, global_step)
+                        writer.add_scalar("charts/episodic_mean_reward_rolling100_minus1std", m - s, global_step)
+
+
                     episode_returns[i] = 0
                     episode_lengths[i] = 0
 
-            # logging episode returns for finished episodes
-            if "final_info" in infos:
-                for info in infos["final_info"]:
-                    if info and "episode" in info:
-                        print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
-                        writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
-                        writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
-                        if args.use_lagrangian:
-                            writer.add_scalar("charts/episodic_cost", episode_costs[i].item(), global_step)
-                            episode_costs[i] = 0  # reset cost for next episode
-                        episode_returns[i] = 0
-                        episode_lengths[i] = 0
+
+            # # logging episode returns for finished episodes
+            # if "final_info" in infos:
+            #     for info in infos["final_info"]:
+            #         if info and "episode" in info:
+            #             print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
+            #             writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
+            #             writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
+            #             if args.use_lagrangian:
+            #                 writer.add_scalar("charts/episodic_cost", episode_costs[i].item(), global_step)
+            #                 episode_costs[i] = 0  # reset cost for next episode
+            #             episode_returns[i] = 0
+            #             episode_lengths[i] = 0
                             
 
         # bootstrap value for last obs
