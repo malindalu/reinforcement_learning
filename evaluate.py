@@ -4,13 +4,16 @@ import torch
 import gymnasium as gym
 import numpy as np
 import matplotlib.pyplot as plt
+import random
 from gymnasium.envs.registration import register
 from simglucose.envs import T1DSimGymnaisumEnv  # Make sure this is available
-from cpo import AgentContinuous as CPOAgent # Adjust import for your agent
+from cpo import AgentContinuous as CPOAgent  # Adjust import for your agent
 from ppo import AgentContinuous as PPOAgent  # Adjust import for your agent
 
 # 1. Register the environment for testing (with 24-hour horizon)
-def make_test_env(patient="adolescent2", patient_name_hash="adolescent#002"):
+def make_test_env(patient="adolescent2", patient_name_hash="adolescent#002", seed=123):
+    np.random.seed(seed)
+    random.seed(seed)
     env_id = f"simglucose/{patient}-test-v0"
     # avoid double-registration if you call multiple times
     try:
@@ -25,9 +28,11 @@ def make_test_env(patient="adolescent2", patient_name_hash="adolescent#002"):
     return gym.make(env_id)
 
 # 2. Load trained agent
-def load_trained_agent(env,
-                       model_path="runs/simglucose/adolescent2-v0__cpo_cleanrl__1__1764654879__2025-12-02_00-54-39/adolescent2_cpo.pt",
-                       model="cpo_cleanrl"):
+def load_trained_agent(
+    env,
+    model_path="runs/simglucose/adolescent2-v0__cpo_cleanrl__1__1764654879__2025-12-02_00-54-39/adolescent2_cpo.pt",
+    model="cpo",
+):
     if model == "cpo":
         ModelAgent = CPOAgent
     else:  # model == "ppo"
@@ -57,6 +62,21 @@ def load_trained_agent(env,
     agent.load_state_dict(state_dict)
     agent.eval()
     return agent
+
+
+def compute_time_in_range(bg_trajectory, low=70.0, high=180.0):
+    """
+    Returns time-in-range (%) for BG trajectory.
+
+    bg_trajectory: 1D array-like of BG values (mg/dL)
+    low, high: bounds for "in range"
+    """
+    bg = np.asarray(bg_trajectory, dtype=float)
+    if bg.size == 0:
+        return 0.0
+    in_range = (bg >= low) & (bg <= high)
+    return in_range.mean() * 100.0
+
 
 # 3. Test the policy on the environment
 def evaluate_policy(agent, env, num_steps=288, seed=123):
@@ -96,7 +116,8 @@ def evaluate_policy(agent, env, num_steps=288, seed=123):
 
     return np.array(bg_trajectory), np.array(u_trajectory)
 
-# 4. Visualize BG + control on twin axes
+
+# 4. Visualize BG + control on twin axes (single run)
 def plot_bg_and_control(bg_trajectory, u_trajectory, save_path="bg_trajectory.png"):
     # time axis in hours (5-min steps)
     timesteps = len(bg_trajectory)
@@ -129,7 +150,13 @@ def plot_bg_and_control(bg_trajectory, u_trajectory, save_path="bg_trajectory.pn
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
     plt.show()
 
-def plot_bg_and_control_side_by_side(bg_trajectory, u_trajectory, save_path="bg_control_side_by_side.png"):
+
+def plot_bg_and_control_side_by_side(
+    bg_trajectory,
+    u_trajectory,
+    save_path="bg_control_side_by_side.png",
+    seed = 123,
+):
     # time axis in hours (5-min steps)
     timesteps = len(bg_trajectory)
     t = np.arange(timesteps) * 5.0 / 60.0  # hours
@@ -156,8 +183,40 @@ def plot_bg_and_control_side_by_side(bg_trajectory, u_trajectory, save_path="bg_
     ax_u.grid(True)
     ax_u.legend(loc="upper right")
 
-    plt.suptitle("BG and Insulin Control Trajectories (24h)", y=1.02)
+    plt.suptitle(f"BG and Insulin Control Trajectories (24h) Seed = {(seed)}", y=1.02)
     fig.tight_layout()
+
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    plt.savefig(save_path, dpi=300, bbox_inches="tight")
+    plt.show()
+
+
+def plot_multi_seed_bg(bg_list, base_seed, save_path="bg_multi_seed.png"):
+    """
+    Plot multiple BG trajectories (one per seed) on a single plot.
+    """
+    plt.figure(figsize=(10, 6))
+
+    for i, bg in enumerate(bg_list):
+        timesteps = len(bg)
+        t = np.arange(timesteps) * 5.0 / 60.0  # hours
+        seed = base_seed + i
+        # light lines for each seed
+        plt.plot(t, bg, alpha=0.4, label=f"Seed {seed}" if i < 5 else None)
+
+    # Range lines
+    plt.axhline(70, color="red", linestyle="--", label="70 mg/dL")
+    plt.axhline(180, color="green", linestyle="--", label="180 mg/dL")
+
+    plt.xlabel("Time (hours)")
+    plt.ylabel("BG (mg/dL)")
+    plt.title("BG Trajectories Across Seeds")
+    plt.grid(True)
+
+    # only show legends for a few seeds + range lines to avoid clutter
+    handles, labels = plt.gca().get_legend_handles_labels()
+    if handles:
+        plt.legend(loc="upper right")
 
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     plt.savefig(save_path, dpi=300, bbox_inches="tight")
@@ -173,22 +232,74 @@ def main():
     parser.add_argument("--patient", type=str, default="adolescent2")
     parser.add_argument("--patient_hash", type=str, default="adolescent#002")
     parser.add_argument("--seed", type=int, default=123)
+    parser.add_argument(
+        "--num_seeds",
+        type=int,
+        default=1,
+        help="If >1, evaluate multiple seeds and aggregate metrics.",
+    )
+    parser.add_argument(
+        "--num_steps",
+        type=int,
+        default=288,
+        help="Max steps per evaluation episode (default 288 for 24h).",
+    )
     args = parser.parse_args()
 
-    env = make_test_env(patient=args.patient, patient_name_hash=args.patient_hash)
+    env = make_test_env(patient=args.patient, patient_name_hash=args.patient_hash, seed=args.seed)
 
     # Load the trained agent
     agent = load_trained_agent(env=env, model_path=args.model_full_path, model=args.model)
 
-    # Evaluate the policy and get BG + control trajectories
-    bg_trajectory, u_trajectory = evaluate_policy(agent, env, num_steps=288, seed=args.seed)
+    plots_dir = f"plots/{args.model_path}"
+    os.makedirs(plots_dir, exist_ok=True)
 
-    # Visualize
-    plot_bg_and_control_side_by_side(
-        bg_trajectory,
-        u_trajectory,
-        save_path=f"plots/{args.model_path}/bg_and_control_trajectory_eval.png",
-    )
+    if args.num_seeds == 1:
+        # Single-run behavior (as before)
+        bg_trajectory, u_trajectory = evaluate_policy(
+            agent, env, num_steps=args.num_steps, seed=args.seed
+        )
+
+        plot_bg_and_control_side_by_side(
+            bg_trajectory,
+            u_trajectory,
+            save_path=os.path.join(plots_dir, "bg_and_control_trajectory_eval.png"),
+            seed=args.seed,
+        )
+
+        tir = compute_time_in_range(bg_trajectory)
+        print(f"Seed {args.seed}: Time in range (70–180 mg/dL) = {tir:.2f}%")
+
+    else:
+        # Multi-seed evaluation
+        bg_list = []
+        u_list = []
+        tir_list = []
+
+        for i in range(args.num_seeds):
+            this_seed = args.seed + i
+            print(f"Evaluating seed {this_seed}...")
+            bg_trajectory, u_trajectory = evaluate_policy(
+                agent, env, num_steps=args.num_steps, seed=this_seed
+            )
+            bg_list.append(bg_trajectory)
+            u_list.append(u_trajectory)
+
+            tir = compute_time_in_range(bg_trajectory)
+            tir_list.append(tir)
+            print(f"  Seed {this_seed}: TIR = {tir:.2f}%")
+
+        tir_array = np.asarray(tir_list, dtype=float)
+        print("\n===== Multi-seed Time-in-Range Summary =====")
+        print(f"Num seeds: {args.num_seeds}")
+        print(f"TIR mean: {tir_array.mean():.2f}%")
+        print(f"TIR std:  {tir_array.std(ddof=1):.2f}%")
+        print(f"TIR min:  {tir_array.min():.2f}%")
+        print(f"TIR max:  {tir_array.max():.2f}%")
+
+        # Plot all BG trajectories together
+        multi_seed_plot_path = os.path.join(plots_dir, f"bg_multi_seed_{args.num_seeds}seeds.png")
+        plot_multi_seed_bg(bg_list, base_seed=args.seed, save_path=multi_seed_plot_path)
 
     env.close()
 
