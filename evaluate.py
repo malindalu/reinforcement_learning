@@ -281,9 +281,16 @@ def main():
         for i in range(args.num_seeds):
             this_seed = args.seed + i
             print(f"Evaluating seed {this_seed}...")
-            bg_trajectory, u_trajectory = evaluate_policy(
-                agent, env, num_steps=args.num_steps, seed=this_seed
+            env_i = make_test_env(
+                patient=args.patient,
+                patient_name_hash=args.patient_hash,
+                seed=this_seed,
             )
+
+            bg_trajectory, u_trajectory = evaluate_policy(
+                agent, env_i, num_steps=args.num_steps, seed=this_seed
+            )
+            env_i.close()
             bg_list.append(bg_trajectory)
             u_list.append(u_trajectory)
 
