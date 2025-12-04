@@ -91,25 +91,37 @@ class SimGlucoseAdolescentEnv(CMDP):
         )
         self._num_envs = 1
 
+        # --- new state for cost + rendering ---
+        self._prev_bg: float | None = None
+        self.cost_scale: float = 1.0
+        self._bg_history: list[float] = []
+
     @property
     def max_episode_steps(self) -> int:
         return 288  # typical simglucose episode length
     
-    def compute_cost(self,obs) -> float:
-        """Return a cost for unsafe glucose levels."""
-        bg = obs[0].item()
-        # Example: penalize hypoglycemia (<70) and hyperglycemia (>180)
-        if bg < 70:
-            return (70 - bg) / 70.0          # larger cost for deeper hypos
-        elif bg > 180:
-            return (bg - 180) / 180.0        # larger cost for extreme hyper
-        return 0.0
+    def compute_cost(self, obs) -> float:
+        """Return a cost for unsafe glucose levels based on BG changes."""
+        bg = float(obs[0])
+        if self._prev_bg is None:
+            cost = 0.0
+        else:
+            diff = bg - self._prev_bg
+            cost = self.cost_scale * float(diff ** 2)
+        self._prev_bg = bg
+        return cost
 
     def step(
         self, action: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict]:
         obs, reward, terminated, truncated, info = self._env.step(action.numpy())
-        # Define cost for safe RL; e.g., glucose out-of-range risk
+        self._last_obs = np.array(obs, copy=True)
+
+        # track BG history for rendering
+        bg = float(obs[0])
+        self._bg_history.append(bg)
+
+        # Define cost for safe RL; e.g., glucose out-of-range risk surrogate
         cost = torch.as_tensor(self.compute_cost(obs), dtype=torch.float32)
 
         self._count += 1
@@ -130,13 +142,59 @@ class SimGlucoseAdolescentEnv(CMDP):
     ) -> tuple[torch.Tensor, dict]:
         obs, info = self._env.reset(seed=seed)
         self._count = 0
+        self._prev_bg = None
+
+        # reset BG history and start with initial BG
+        self._bg_history = [float(obs[0])]
+
         return torch.as_tensor(obs, dtype=torch.float32), info
 
     def close(self) -> None:
         self._env.close()
 
     def render(self) -> Any:
-        return self._env.render()
+        """
+        Return an RGB frame of BG over time with horizontal bounds at 70 (red)
+        and 180 (green).
+        """
+        import matplotlib.pyplot as plt
+
+        # If no history yet but we have an observation, seed it
+        if not self._bg_history and self._last_obs is not None:
+            self._bg_history.append(float(self._last_obs[0]))
+
+        # Make sure we have something to show
+        if not self._bg_history:
+            return None
+
+        bg_vals = np.array(self._bg_history, dtype=float)
+        x = np.arange(len(bg_vals))
+
+        fig, ax = plt.subplots(figsize=(6, 3), dpi=100)
+        ax.plot(x, bg_vals, linewidth=2)
+
+        # Bounds: 70 (red) and 180 (green)
+        ax.axhline(70.0, color="red", linestyle="--", linewidth=1.5, label="70 mg/dL")
+        ax.axhline(180.0, color="green", linestyle="--", linewidth=1.5, label="180 mg/dL")
+
+        ax.set_xlabel("Time step")
+        ax.set_ylabel("BG (mg/dL)")
+        ax.set_title("Blood Glucose Trace")
+        # Set a reasonable y-limit
+        ymin = min(bg_vals.min(), 50.0)
+        ymax = max(bg_vals.max(), 250.0)
+        ax.set_ylim(ymin, ymax)
+        ax.legend(loc="upper right", fontsize=8)
+        fig.tight_layout()
+
+        # Convert figure to RGB array
+        fig.canvas.draw()
+        w, h = fig.canvas.get_width_height()
+        frame = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+        frame = frame.reshape(h, w, 3)
+        plt.close(fig)
+
+        return frame
     
     def set_seed(self, seed: int | None = None) -> None:
         """Set the RNG seed for reproducibility."""
@@ -145,9 +203,7 @@ class SimGlucoseAdolescentEnv(CMDP):
         if seed is not None:
             random.seed(seed)
             np.random.seed(seed)
-            # If your simglucose env supports gym seeding:
             self._env.reset(seed=seed)
-
 
 def build_config(args: Args):
     return {
