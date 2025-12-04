@@ -135,8 +135,8 @@ def sweep_lag_steps(
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, default="cpo_cleanrl",
-                        choices=["cpo_cleanrl", "ppo"])
+    parser.add_argument("--model", type=str, default="cpo",
+                        choices=["cpo", "ppo"])
     parser.add_argument("--model_full_path", type=str, required=True)
     parser.add_argument("--model_path", type=str, required=True)
     parser.add_argument("--patient", type=str, default="adolescent2")
