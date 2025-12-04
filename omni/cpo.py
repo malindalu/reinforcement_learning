@@ -158,6 +158,7 @@ class SimGlucoseAdolescentEnv(CMDP):
         and 180 (green).
         """
         import matplotlib.pyplot as plt
+        plt.use("Agg")
 
         # If no history yet but we have an observation, seed it
         if not self._bg_history and self._last_obs is not None:
