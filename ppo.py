@@ -358,6 +358,7 @@ def main():
     bgs = torch.zeros((args.num_steps, args.num_envs)).to(device)
 
     recent_mean_rewards = deque(maxlen=100)
+    recent_episode_costs = deque(maxlen=100)  # Track recent episode costs for Lagrange
 
     costs = torch.zeros((args.num_steps, args.num_envs)).to(device)
 
@@ -443,26 +444,13 @@ def main():
                         writer.add_scalar("charts/episodic_mean_reward_rolling100_minus1std", m - s, global_step)
 
                     if args.use_lagrangian:
-                        writer.add_scalar("charts/episodic_cost", episode_costs[idx].item(), global_step)
+                        ep_cost = episode_costs[idx].item()
+                        writer.add_scalar("charts/episodic_cost", ep_cost, global_step)
+                        recent_episode_costs.append(ep_cost)
                         episode_costs[idx] = 0.0
 
                     episode_returns[idx] = 0
                     episode_lengths[idx] = 0    
-
-
-            # # logging episode returns for finished episodes
-            # if "final_info" in infos:
-            #     for info in infos["final_info"]:
-            #         if info and "episode" in info:
-            #             print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
-            #             writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
-            #             writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
-            #             if args.use_lagrangian:
-            #                 writer.add_scalar("charts/episodic_cost", episode_costs[i].item(), global_step)
-            #                 episode_costs[i] = 0  # reset cost for next episode
-            #             episode_returns[i] = 0
-            #             episode_lengths[i] = 0
-                            
 
         # bootstrap value for last obs
         with torch.no_grad():
@@ -487,7 +475,7 @@ def main():
 
         if args.use_lagrangian:
             cost_returns = torch.zeros_like(costs).to(device)
-            last_cost_return = 0
+            last_cost_return = torch.zeros(args.num_envs).to(device)
             for t in reversed(range(args.num_steps)):
                 if t == args.num_steps - 1:
                     nextnonterminal = 1.0 - next_done
@@ -581,12 +569,13 @@ def main():
                 break
         
         if args.use_lagrangian:
-            # Average discounted cost per time step in this batch
-            avg_batch_cost = costs.mean().item()
-            lagrange.update_lagrange_multiplier(avg_batch_cost)
-            writer.add_scalar("charts/lagrangian_multiplier",
-                            lagrange.lagrangian_multiplier.item(), global_step)
-            writer.add_scalar("charts/batch_avg_cost", avg_batch_cost, global_step)
+            # Use recent average episode cost for Lagrange multiplier update
+            if len(recent_episode_costs) > 0:
+                avg_ep_cost = np.mean(recent_episode_costs)
+                lagrange.update_lagrange_multiplier(avg_ep_cost)
+                writer.add_scalar("charts/lagrangian_multiplier",
+                                lagrange.lagrangian_multiplier.item(), global_step)
+                writer.add_scalar("charts/avg_episode_cost", avg_ep_cost, global_step)
         # diagnostics
         y_pred, y_true = b_values.cpu().numpy(), b_returns.cpu().numpy()
         var_y = np.var(y_true)
