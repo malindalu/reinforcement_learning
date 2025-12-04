@@ -173,7 +173,7 @@ def main():
     )
 
     if args.plot_lag_sensitivity:
-        lag_steps_list = list(range(0, 20, 2))
+        lag_steps_list = list(range(0, 6))
         sweep_lag_steps(
             agent,
             env,
