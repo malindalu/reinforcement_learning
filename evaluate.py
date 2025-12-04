@@ -80,6 +80,8 @@ def compute_time_in_range(bg_trajectory, low=70.0, high=180.0):
 
 # 3. Test the policy on the environment
 def evaluate_policy(agent, env, num_steps=288, seed=123):
+    np.random.seed(seed)
+    random.seed(seed)
     obs, _ = env.reset(seed=seed)  # Reset to start
     obs = torch.tensor(obs, dtype=torch.float32).reshape(1, -1)  # Flatten observation
 
@@ -202,7 +204,7 @@ def plot_multi_seed_bg(bg_list, base_seed, save_path="bg_multi_seed.png"):
         t = np.arange(timesteps) * 5.0 / 60.0  # hours
         seed = base_seed + i
         # light lines for each seed
-        plt.plot(t, bg, alpha=0.4, label=f"Seed {seed}" if i < 5 else None)
+        plt.plot(t, bg, alpha=0.4, label=f"Seed {seed}")
 
     # Range lines
     plt.axhline(70, color="red", linestyle="--", label="70 mg/dL")
