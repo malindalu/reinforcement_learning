@@ -68,13 +68,13 @@ class Args:
     cost_limit: float = 0.1     # maximum allowed BG violation penalty
     lagrangian_multiplier_init: float = 0.001
     lagrangian_multiplier_lr: float = 0.035
-    lagrangian_cost: str = "time_outside"  # "proportional" or "time_outside"
+    lagrangian_cost: str = "time_outside"  # "proportional" or "time_outside" or "smooth"
 
 class RewardHackWrapper(gym.Wrapper):
     """
     Overrides reward using BG (blood glucose) from observation.
     Assumes obs is flattened or dict with key 'BG'—you may need to adjust
-    depending on your env’s observation structure.
+    depending on your env's observation structure.
     """
     def reward_from_bg(self, obs):
         # If FlattenObservation: BG is usually feature 0
@@ -147,6 +147,26 @@ class BGTimeOutsideCostWrapper(BGCostWrapper):
         bg = obs[0] if not isinstance(obs, dict) else float(obs.get("BG", 110))
         # 1 if outside [70,180], else 0
         return 1.0 if (bg < 70 or bg > 180) else 0.0
+    
+class BGSmoothControlCostWrapper(BGCostWrapper):
+    def __init__(self, env, scale=0.01):
+        super().__init__(env)
+        self._prev_bg = None
+        self.scale = scale
+    
+    def cost_from_bg(self, obs):
+        bg = obs[0] if not isinstance(obs, dict) else float(obs.get("BG", 110))
+        if self._prev_bg is None:
+            cost = 0.0
+        else:
+            diff = bg - self._prev_bg
+            cost = self.scale * float(diff ** 2)
+        self._prev_bg = bg
+        return cost
+    
+    def reset(self, **kwargs):
+        self._prev_bg = None
+        return self.env.reset(**kwargs)
 
 def make_env(env_id, patient, patient_name_hash, render_mode=None,  reward_hack=True, use_lagrangian=False, lag_cost_method="time_outside", reward_method = "proportional"):
     register(
@@ -171,6 +191,8 @@ def make_env(env_id, patient, patient_name_hash, render_mode=None,  reward_hack=
         if use_lagrangian:
             if lag_cost_method == "time_outside":
                 env = BGTimeOutsideCostWrapper(env)
+            elif lag_cost_method == "smooth":
+                env = BGSmoothControlCostWrapper(env)
             else: # proportional
                 env = BGCostWrapper(env)
         return env
@@ -331,6 +353,9 @@ def main():
     episode_returns = torch.zeros(args.num_envs).to(device)
     episode_lengths = torch.zeros(args.num_envs).to(device)
     episode_costs = torch.zeros(args.num_envs).to(device)
+    
+    # For tracking BG values
+    bgs = torch.zeros((args.num_steps, args.num_envs)).to(device)
 
     recent_mean_rewards = deque(maxlen=100)
 
@@ -367,14 +392,17 @@ def main():
             next_obs_np, reward_np, terminations, truncations, infos = envs.step(action_np)
             next_done = np.logical_or(terminations, truncations)
 
+            # Extract and store BG values
+            bg_values = next_obs_np[:, 0]  # BG is first feature after flattening
+            bgs[step] = torch.tensor(bg_values, dtype=torch.float32).to(device)
+            
             # convert to tensors
             next_obs = torch.Tensor(next_obs_np).to(device)
             rewards[step] = torch.tensor(reward_np, dtype=torch.float32).to(device)
-            writer.add_scalar(
-                "charts/step_mean_reward",
-                rewards[step].mean().item(),
-                global_step,
-            )
+            
+            # Log mean BG and reward at each step
+            writer.add_scalar("charts/step_mean_bg", bgs[step].mean().item(), global_step)
+            writer.add_scalar("charts/step_mean_reward", rewards[step].mean().item(), global_step)
             next_done = torch.Tensor(next_done).to(device)
 
             if args.use_lagrangian:
@@ -392,14 +420,15 @@ def main():
             episode_returns += rewards[step]
             episode_lengths += 1
 
-            for i, done_flag in enumerate(next_done):
-                if done_flag:
-                    ep_ret = episode_returns[i].item()
-                    ep_len = episode_lengths[i].item()
+            # Handle episode completion and logging
+            for idx in range(args.num_envs):
+                if next_done[idx]:
+                    ep_ret = episode_returns[idx].item()
+                    ep_len = episode_lengths[idx].item()
                     ep_mean_reward = ep_ret / max(ep_len, 1)
                 
-                    writer.add_scalar("charts/episodic_return", episode_returns[i].item(), global_step)
-                    writer.add_scalar("charts/episodic_length", episode_lengths[i].item(), global_step)
+                    writer.add_scalar("charts/episodic_return", ep_ret, global_step)
+                    writer.add_scalar("charts/episodic_length", ep_len, global_step)
                     writer.add_scalar("charts/mean_reward", ep_mean_reward, global_step)
 
                     # add to rolling window for band
@@ -414,11 +443,11 @@ def main():
                         writer.add_scalar("charts/episodic_mean_reward_rolling100_minus1std", m - s, global_step)
 
                     if args.use_lagrangian:
-                        writer.add_scalar("charts/episodic_cost", episode_costs[i].item(), global_step)
-                        episode_costs[i] = 0.0   # <-- RESET COST HERE
+                        writer.add_scalar("charts/episodic_cost", episode_costs[idx].item(), global_step)
+                        episode_costs[idx] = 0.0
 
-                    episode_returns[i] = 0
-                    episode_lengths[i] = 0    
+                    episode_returns[idx] = 0
+                    episode_lengths[idx] = 0    
 
 
             # # logging episode returns for finished episodes
@@ -505,16 +534,21 @@ def main():
                 mb_advantages = b_advantages[mb_inds].to(device)
                 
                 if args.use_lagrangian:
-                    # cost-to-go for this minibatch
-                    mb_cost = b_cost_returns[mb_inds].to(device)
-                    if args.norm_adv:
-                        mb_cost = (mb_cost - mb_cost.mean()) / (mb_cost.std() + 1e-8)
-                    # effective advantage: A_eff = A_r - λ * A_c
-                    lam = lagrange.lagrangian_multiplier.detach()
-                    mb_advantages = mb_advantages - lam * mb_cost
+                    # reward adv and cost returns
+                    mb_rew_adv = mb_advantages
+                    mb_cost_ret = b_cost_returns[mb_inds].to(device)
 
-                if args.norm_adv:
-                    mb_advantages = (mb_advantages - mb_advantages.mean()) / (mb_advantages.std() + 1e-8)
+                    if args.norm_adv:
+                        # normalize each separately
+                        mb_rew_adv = (mb_rew_adv - mb_rew_adv.mean()) / (mb_rew_adv.std() + 1e-8)
+                        mb_cost_ret = (mb_cost_ret - mb_cost_ret.mean()) / (mb_cost_ret.std() + 1e-8)
+
+                    lam = lagrange.lagrangian_multiplier.detach()
+                    # final effective advantage (no extra normalization)
+                    mb_advantages = mb_rew_adv - lam * mb_cost_ret
+                else:
+                    if args.norm_adv:
+                        mb_advantages = (mb_advantages - mb_advantages.mean()) / (mb_advantages.std() + 1e-8)
 
                 pg_loss1 = -mb_advantages * ratio
                 pg_loss2 = -mb_advantages * torch.clamp(ratio, 1 - args.clip_coef, 1 + args.clip_coef)
