@@ -63,6 +63,7 @@ class Args:
     reward_hack: bool = False
     action_initial_bias: float = 5.0
     reward_method: str = "proportional"  # "regioned" or "proportional"
+    action_delay_steps: int = 0
 
     use_lagrangian: bool = False  # NEW
     cost_limit: float = 0.1     # maximum allowed BG violation penalty
@@ -107,6 +108,39 @@ class ProportionalRewardWrapper(RewardHackWrapper):
         reward = 1.0 - abs(bg - center) / scale
 
         return reward
+
+class ActionDelayWrapper(gym.Wrapper):
+    """
+    Applies k-step control delay:
+    - At time t, the policy outputs a_t.
+    - The environment actually receives a_{t - k} (or 0 at startup).
+    """
+    def __init__(self, env, delay_steps=0):
+        super().__init__(env)
+        assert delay_steps >= 0
+        self.delay_steps = int(delay_steps)
+        self._buffer = None
+
+    def reset(self, **kwargs):
+        obs, info = self.env.reset(**kwargs)
+        if self.delay_steps > 0:
+            # use a zero action with same shape/dtype as the action space
+            zero_action = np.zeros_like(self.env.action_space.sample())
+            self._buffer = [zero_action.copy() for _ in range(self.delay_steps)]
+        else:
+            self._buffer = None
+        return obs, info
+
+    def step(self, action):
+        # No delay → pass through
+        if self.delay_steps <= 0 or self._buffer is None:
+            return self.env.step(action)
+
+        # Push current action, pop oldest to apply
+        self._buffer.append(action)
+        delayed_action = self._buffer.pop(0)
+        return self.env.step(delayed_action)
+
 
 class Lagrange:
     def __init__(self, cost_limit=10.0, lagrangian_multiplier_init=0.001, lagrangian_multiplier_lr=0.035):
@@ -168,7 +202,9 @@ class BGSmoothControlCostWrapper(BGCostWrapper):
         self._prev_bg = None
         return self.env.reset(**kwargs)
 
-def make_env(env_id, patient, patient_name_hash, render_mode=None,  reward_hack=True, use_lagrangian=False, lag_cost_method="time_outside", reward_method = "proportional"):
+def make_env(env_id, patient, patient_name_hash, render_mode=None,  reward_hack=True, 
+             use_lagrangian=False, lag_cost_method="time_outside", reward_method = "proportional",
+             action_delay_steps: int = 0):
     register(
         id=f"simglucose/{patient}-v0",
         entry_point="simglucose.envs:T1DSimGymnaisumEnv",
@@ -195,6 +231,8 @@ def make_env(env_id, patient, patient_name_hash, render_mode=None,  reward_hack=
                 env = BGSmoothControlCostWrapper(env)
             else: # proportional
                 env = BGCostWrapper(env)
+        if action_delay_steps and action_delay_steps > 0:
+            env = ActionDelayWrapper(env, delay_steps=action_delay_steps)
         return env
     return thunk
 
@@ -319,7 +357,8 @@ def main():
                   reward_hack=args.reward_hack, 
                   use_lagrangian=args.use_lagrangian, 
                   lag_cost_method=args.lagrangian_cost, 
-                  reward_method=args.reward_method) for i in range(args.num_envs)]
+                  reward_method=args.reward_method,
+                  action_delay_steps=args.action_delay_steps) for i in range(args.num_envs)],
     )
 
     # ensure Box action space
