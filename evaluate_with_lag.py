@@ -16,7 +16,7 @@ def compute_time_in_range(bg_trajectory, low=70.0, high=180.0):
     if bg.size == 0:
         return 0.0
     in_range = (bg >= low) & (bg <= high)
-    return in_range.mean() * 100.0
+    return sum(in_range)/288 * 100.0
 
 
 def evaluate_policy(agent, env, num_steps=288, seed=123, lag_steps=0):
