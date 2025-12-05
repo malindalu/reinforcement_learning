@@ -258,7 +258,7 @@ class AgentContinuous(nn.Module):
             nn.Tanh(),
             layer_init(nn.Linear(128, 128)),
             nn.Tanh(),
-            layer_init(nn.Linear(129, 1), std=1.0),
+            layer_init(nn.Linear(128, 1), std=1.0),
         )
         # Actor -> output mean for each action dim
         self.actor_mean = nn.Sequential(
