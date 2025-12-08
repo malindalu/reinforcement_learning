@@ -71,6 +71,57 @@ class Args:
     lagrangian_multiplier_lr: float = 0.035
     lagrangian_cost: str = "time_outside"  # "proportional" or "time_outside" or "smooth"
 
+    add_bg_derivative: bool = True
+
+class BGDerivativeWrapper(gym.ObservationWrapper):
+    """
+    Augments the flattened observation with a BG derivative feature:
+        dBG = BG_t - BG_{t-1}
+    Assumes:
+        - Observation is a 1D Box vector after FlattenObservation.
+        - BG is at index 0 of the flattened observation.
+    """
+    def __init__(self, env):
+        super().__init__(env)
+        assert isinstance(self.observation_space, gym.spaces.Box), \
+            "BGDerivativeWrapper expects a Box observation space."
+
+        orig_space = self.observation_space
+        self._prev_bg = None
+
+        # Extend low/high bounds by one dimension for the derivative.
+        # Use very wide bounds so we don't artificially clip.
+        deriv_low = np.array([-np.inf], dtype=orig_space.dtype)
+        deriv_high = np.array([np.inf], dtype=orig_space.dtype)
+
+        low = np.concatenate([orig_space.low, deriv_low], axis=0)
+        high = np.concatenate([orig_space.high, deriv_high], axis=0)
+
+        self.observation_space = gym.spaces.Box(
+            low=low,
+            high=high,
+            dtype=orig_space.dtype,
+        )
+
+    def reset(self, **kwargs):
+        self._prev_bg = None
+        obs, info = self.env.reset(**kwargs)
+        obs = self.observation(obs)
+        return obs, info
+
+    def observation(self, obs):
+        # obs is the flattened observation from the wrapped env
+        bg = float(obs[0])
+        if self._prev_bg is None:
+            delta = 0.0
+        else:
+            delta = bg - self._prev_bg
+        self._prev_bg = bg
+
+        deriv = np.array([delta], dtype=obs.dtype)
+        return np.concatenate([obs, deriv], axis=0)
+
+
 class RewardHackWrapper(gym.Wrapper):
     """
     Overrides reward using BG (blood glucose) from observation.
@@ -204,7 +255,7 @@ class BGSmoothControlCostWrapper(BGCostWrapper):
 
 def make_env(env_id, patient, patient_name_hash, render_mode=None,  reward_hack=True, 
              use_lagrangian=False, lag_cost_method="time_outside", reward_method = "proportional",
-             action_delay_steps: int = 0):
+             action_delay_steps: int = 0, add_bg_derivative = False):
     register(
         id=f"simglucose/{patient}-v0",
         entry_point="simglucose.envs:T1DSimGymnaisumEnv",
@@ -233,6 +284,9 @@ def make_env(env_id, patient, patient_name_hash, render_mode=None,  reward_hack=
                 env = BGCostWrapper(env)
         if action_delay_steps and action_delay_steps > 0:
             env = ActionDelayWrapper(env, delay_steps=action_delay_steps)
+
+        if add_bg_derivative:
+            env = BGDerivativeWrapper(env)
         return env
     return thunk
 
@@ -358,7 +412,9 @@ def main():
                   use_lagrangian=args.use_lagrangian, 
                   lag_cost_method=args.lagrangian_cost, 
                   reward_method=args.reward_method,
-                  action_delay_steps=args.action_delay_steps) for i in range(args.num_envs)],
+                  action_delay_steps=args.action_delay_steps,
+                  add_bg_derivative=args.add_bg_derivative
+                  ) for i in range(args.num_envs)],
     )
 
     # ensure Box action space
@@ -449,7 +505,7 @@ def main():
                 if isinstance(infos, dict):
                     infos = [infos]
                 step_costs = torch.tensor(
-                    [float(info.get("cost", 0.0)) for info in infos],
+                    [info.get("cost", 0.0) for info in infos],
                     dtype=torch.float32,
                     device=device
                 ).view(-1)  # flatten to 1D, shape = [num_envs]device
