@@ -64,6 +64,7 @@ class Args:
     action_initial_bias: float = 5.0
     reward_method: str = "proportional"  # "regioned" or "proportional"
     action_delay_steps: int = 0
+    hidden_dim: int = 64
 
     use_lagrangian: bool = False  # NEW
     cost_limit: float = 0.1     # maximum allowed BG violation penalty
@@ -304,23 +305,23 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
 # Agent (continuous actions)
 # ----------------------------
 class AgentContinuous(nn.Module):
-    def __init__(self, obs_dim, act_dim, act_low, act_high, clip_actions=False, action_initial_bias=5.0):
+    def __init__(self, obs_dim, act_dim, act_low, act_high, clip_actions=False, action_initial_bias=5.0, hidden_dim = 64):
         super().__init__()
         # Critic
         self.critic = nn.Sequential(
-            layer_init(nn.Linear(obs_dim, 64)),
+            layer_init(nn.Linear(obs_dim, hidden_dim)),
             nn.Tanh(),
-            layer_init(nn.Linear(64, 64)),
+            layer_init(nn.Linear(hidden_dim, hidden_dim)),
             nn.Tanh(),
-            layer_init(nn.Linear(64, 1), std=1.0),
+            layer_init(nn.Linear(hidden_dim, 1), std=1.0),
         )
         # Actor -> output mean for each action dim
         self.actor_mean = nn.Sequential(
-            layer_init(nn.Linear(obs_dim, 64)),
+            layer_init(nn.Linear(obs_dim, hidden_dim)),
             nn.Tanh(),
-            layer_init(nn.Linear(64, 64)),
+            layer_init(nn.Linear(hidden_dim, hidden_dim)),
             nn.Tanh(),
-            layer_init(nn.Linear(64, act_dim), std=0.01, bias_const=action_initial_bias),
+            layer_init(nn.Linear(hidden_dim, act_dim), std=0.01, bias_const=action_initial_bias),
         )
         # learnable logstd (one per action dim)
         self.logstd = nn.Parameter(torch.zeros(act_dim))
@@ -427,7 +428,11 @@ def main():
     act_low = envs.single_action_space.low
     act_high = envs.single_action_space.high
 
-    agent = AgentContinuous(obs_dim, act_dim, act_low, act_high, clip_actions=args.clip_actions, action_initial_bias=args.action_initial_bias).to(device)
+    agent = AgentContinuous(obs_dim, act_dim, act_low, act_high, 
+                            clip_actions=args.clip_actions,
+                            action_initial_bias=args.action_initial_bias,
+                            hidden_dim=args.hidden_dim
+                            ).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
     # STORAGE: keep as torch tensors on device (CleanRL style)
