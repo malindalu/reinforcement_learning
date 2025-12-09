@@ -28,7 +28,7 @@ def make_test_env(patient="adolescent2", patient_name_hash="adolescent#002", see
             kwargs={"patient_name": patient_name_hash},
         )
     env = gym.make(env_id)
-    if state == "derive":
+    if state == "deriv":
         env = BGDerivativeWrapper(env)
     if cost == "time_outside":
         env = BGTimeOutsideCostWrapper(env)
@@ -64,6 +64,7 @@ def load_trained_agent(
         act_low=act_low,
         act_high=act_high,
         clip_actions=True,  # if that’s what you used in training
+        hidden_dim = hidden_dim
     )
 
     if torch.cuda.is_available():
@@ -304,6 +305,9 @@ def main():
                 patient=args.patient,
                 patient_name_hash=args.patient_hash,
                 seed=this_seed,
+                state=args.state,
+                cost = args.cost,
+                reward = args.reward
             )
 
             bg_trajectory, u_trajectory = evaluate_policy(

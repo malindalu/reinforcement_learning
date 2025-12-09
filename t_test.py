@@ -39,7 +39,7 @@ from evaluate import make_test_env
 
 
 # 2. Load trained agent (same as before but used for both models)
-def load_trained_agent(env, model_path, model="cpo"):
+def load_trained_agent(env, model_path, model="cpo", hidden_dim=64):
     if model == "cpo":
         ModelAgent = CPOAgent
     else:  # "ppo"
@@ -57,6 +57,7 @@ def load_trained_agent(env, model_path, model="cpo"):
         act_low=act_low,
         act_high=act_high,
         clip_actions=True,
+        hidden_dim=hidden_dim
     )
 
     if torch.cuda.is_available():
@@ -221,10 +222,12 @@ def main():
     parser.add_argument("--model_1_state", type=str, default="basic") # or deriv
     parser.add_argument("--model_1_cost", type=str, default="time_outside") # or smooth
     parser.add_argument("--model_1_reward", type=str, default="risk") # or proportional or regioned
+    parser.add_argument("--model_1_hidden_dim", type=int, default=64) # or proportional or regioned
 
     parser.add_argument("--model_2_state", type=str, default="basic") # or deriv
     parser.add_argument("--model_2_cost", type=str, default="time_outside") # or smooth
     parser.add_argument("--model_2_reward", type=str, default="risk") # or proportional or regioned
+    parser.add_argument("--model_2_hidden_dim", type=int, default=64) # or proportional or regioned
 
     parser.add_argument("--patient", type=str, default="adolescent2")
     parser.add_argument("--patient_hash", type=str, default="adolescent#002")
@@ -280,11 +283,13 @@ def main():
         env=env_template_1,
         model_path=model1_full_path,
         model=args.model1_type,
+        hidden_dim=args.model_1_hidden_dim
     )
     agent2 = load_trained_agent(
         env=env_template_2,
         model_path=model2_full_path,
         model=args.model2_type,
+        hidden_dim=args.model_2_hidden_dim
     )
     env_template_1.close()
     env_template_2.close()
