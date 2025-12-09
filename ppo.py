@@ -308,19 +308,19 @@ class AgentContinuous(nn.Module):
         super().__init__()
         # Critic
         self.critic = nn.Sequential(
-            layer_init(nn.Linear(obs_dim, 128)),
+            layer_init(nn.Linear(obs_dim, 64)),
             nn.Tanh(),
-            layer_init(nn.Linear(128, 128)),
+            layer_init(nn.Linear(64, 64)),
             nn.Tanh(),
-            layer_init(nn.Linear(128, 1), std=1.0),
+            layer_init(nn.Linear(64, 1), std=1.0),
         )
         # Actor -> output mean for each action dim
         self.actor_mean = nn.Sequential(
-            layer_init(nn.Linear(obs_dim, 128)),
+            layer_init(nn.Linear(obs_dim, 64)),
             nn.Tanh(),
-            layer_init(nn.Linear(128, 128)),
+            layer_init(nn.Linear(64, 64)),
             nn.Tanh(),
-            layer_init(nn.Linear(128, act_dim), std=0.01, bias_const=action_initial_bias),
+            layer_init(nn.Linear(64, act_dim), std=0.01, bias_const=action_initial_bias),
         )
         # learnable logstd (one per action dim)
         self.logstd = nn.Parameter(torch.zeros(act_dim))
