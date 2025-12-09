@@ -6,9 +6,10 @@ from pathlib import Path
 # EDIT THIS: list of run folder names under runs/simglucose/
 # ---------------------------------------------------------------------
 RUN_IDS = [
-    "adolescent2-v0__ppo__1__1764957049__2025-12-05_12-50-49_lagrangian",
-    "adolescent2-v0__ppo__1__1764948440__2025-12-05_10-27-20_lagrangian",
-    "adolescent2-v0__ppo__1__1764850234__2025-12-04_07-10-34_lagrangian"
+    "adolescent2-v0__ppo__1__1765172126__2025-12-08_00-35-26_lagrangian",
+    "adolescent2-v0__ppo__1__1765171548__2025-12-08_00-25-48_lagrangian",
+    "adolescent2-v0__ppo__1__1765168393__2025-12-07_23-33-13_lagrangian",
+    "adolescent2-v0__ppo__1__1765168278__2025-12-07_23-31-18_lagrangian"
     # add more here...
 ]
 
