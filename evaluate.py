@@ -9,10 +9,11 @@ from gymnasium.envs.registration import register
 from simglucose.envs import T1DSimGymnaisumEnv  # Make sure this is available
 from cpo import AgentContinuous as CPOAgent  # Adjust import for your agent
 from ppo import AgentContinuous as PPOAgent  # Adjust import for your agent
-from ppo import BGDerivativeWrapper, BGTimeOutsideCostWrapper, BGSmoothControlCostWrapper
+from ppo import BGDerivativeWrapper, BGTimeOutsideCostWrapper, BGSmoothControlCostWrapper, ProportionalRewardWrapper, RewardHackWrapper
 
 # 1. Register the environment for testing (with 24-hour horizon)
-def make_test_env(patient="adolescent2", patient_name_hash="adolescent#002", seed=123):
+def make_test_env(patient="adolescent2", patient_name_hash="adolescent#002", seed=123, 
+                  state="basic", cost="time_outside", reward="risk"):
     np.random.seed(seed)
     random.seed(seed)
     env_id = f"simglucose/{patient}-test-v0"
@@ -27,8 +28,16 @@ def make_test_env(patient="adolescent2", patient_name_hash="adolescent#002", see
             kwargs={"patient_name": patient_name_hash},
         )
     env = gym.make(env_id)
-    env = BGDerivativeWrapper(env)
-    env = BGTimeOutsideCostWrapper(env)
+    if state == "derive":
+        env = BGDerivativeWrapper(env)
+    if cost == "time_outside":
+        env = BGTimeOutsideCostWrapper(env)
+    elif cost == "smooth":
+        env = BGSmoothControlCostWrapper(env)
+    if reward == "proportional":
+        env = ProportionalRewardWrapper(env)
+    elif reward == "regioned":
+        env = RewardHackWrapper(env)
     return env
 
 # 2. Load trained agent
@@ -240,6 +249,9 @@ def main():
     parser.add_argument("--patient_hash", type=str, default="adolescent#002")
     parser.add_argument("--seed", type=int, default=123)
     parser.add_argument("--hidden_dim", type=int, default=64)
+    parser.add_argument("--state", type=str, default="basic") # or deriv
+    parser.add_argument("--cost", type=str, default="time_outside") # or proportional
+    parser.add_argument("--reward", type=str, default="risk") # or proportional or regioned
     parser.add_argument(
         "--num_seeds",
         type=int,
@@ -254,7 +266,8 @@ def main():
     )
     args = parser.parse_args()
 
-    env = make_test_env(patient=args.patient, patient_name_hash=args.patient_hash, seed=args.seed)
+    env = make_test_env(patient=args.patient, patient_name_hash=args.patient_hash, seed=args.seed,
+                        state = args.state, cost = args.cost, reward = args.reward)
 
     # Load the trained agent
     agent = load_trained_agent(env=env, model_path=args.model_full_path, model=args.model, hidden_dim=args.hidden_dim)
