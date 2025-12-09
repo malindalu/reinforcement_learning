@@ -74,6 +74,13 @@ class Args:
 
     add_bg_derivative: bool = True
 
+    # ---------- NEW: hybrid PID mode ----------
+    use_hybrid_pid: bool = False
+    pid_setpoint: float = 125.0      # target BG
+    pid_init_kp: float = 0.02
+    pid_init_ki: float = 0.0
+    pid_init_kd: float = 0.0
+
 class BGDerivativeWrapper(gym.ObservationWrapper):
     """
     Augments the flattened observation with a BG derivative feature:
@@ -333,7 +340,21 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
 # Agent (continuous actions)
 # ----------------------------
 class AgentContinuous(nn.Module):
-    def __init__(self, obs_dim, act_dim, act_low, act_high, clip_actions=False, action_initial_bias=5.0, hidden_dim = 64):
+    def __init__(
+        self,
+        obs_dim,
+        act_dim,
+        act_low,
+        act_high,
+        clip_actions=False,
+        action_initial_bias=5.0,
+        hidden_dim=64,
+        use_hybrid_pid=False,
+        pid_setpoint=125.0,
+        pid_init_kp=0.02,
+        pid_init_ki=0.0,
+        pid_init_kd=0.0,
+    ):
         super().__init__()
         # Critic
         self.critic = nn.Sequential(
@@ -349,31 +370,94 @@ class AgentContinuous(nn.Module):
             nn.Tanh(),
             layer_init(nn.Linear(hidden_dim, hidden_dim)),
             nn.Tanh(),
-            layer_init(nn.Linear(hidden_dim, act_dim), std=0.01, bias_const=action_initial_bias),
+            layer_init(
+                nn.Linear(hidden_dim, act_dim),
+                std=0.01,
+                bias_const=action_initial_bias,
+            ),
         )
         # learnable logstd (one per action dim)
         self.logstd = nn.Parameter(torch.zeros(act_dim))
-        # action bounds for clipping, register buffer not considered as model param
+        # action bounds
         self.register_buffer("act_low", torch.tensor(act_low, dtype=torch.float32))
         self.register_buffer("act_high", torch.tensor(act_high, dtype=torch.float32))
         self.clip_actions = clip_actions
 
+        # ---------- NEW: hybrid PID head ----------
+        self.use_hybrid_pid = use_hybrid_pid
+        if use_hybrid_pid:
+            # Learnable PID gains
+            self.pid_kp = nn.Parameter(torch.tensor(pid_init_kp, dtype=torch.float32))
+            self.pid_ki = nn.Parameter(torch.tensor(pid_init_ki, dtype=torch.float32))
+            self.pid_kd = nn.Parameter(torch.tensor(pid_init_kd, dtype=torch.float32))
+
+            # Target BG
+            self.register_buffer(
+                "pid_setpoint", torch.tensor(pid_setpoint, dtype=torch.float32)
+            )
+
+            # Very simple integral & prev error (shared across envs).
+            # Good enough for num_envs=1, which is what you're using.
+            self.register_buffer("pid_integral", torch.zeros(1, dtype=torch.float32))
+            self.register_buffer("pid_prev_error", torch.zeros(1, dtype=torch.float32))
+
+    def reset_pid_state(self):
+        """
+        Call this if you want to manually zero the PID state,
+        e.g. between episodes. (Not strictly necessary but available.)
+        """
+        if self.use_hybrid_pid:
+            self.pid_integral.zero_()
+            self.pid_prev_error.zero_()
+
     def get_value(self, x):
         return self.critic(x)
 
-    def get_action_and_value(self, x, action=None):
+    def get_action_and_value(self, x, action=None, update_pid_state=False):
         """
-        x: torch tensor [batch, obs_dim]
-        returns: action (tensor), logprob (tensor), entropy (tensor), value (tensor)
+        x: [batch, obs_dim]
+        update_pid_state:
+            - True during data collection (rollout)
+            - False during PPO update (no state mutation)
         """
-        mu = self.actor_mean(x)
+        mu = self.actor_mean(x)  # [batch, act_dim]
+
+        # ---------- NEW: add PID term if enabled ----------
+        if self.use_hybrid_pid:
+            # Assume BG is feature 0 (consistent with your wrappers)
+            bg = x[:, 0]  # [batch]
+            error = self.pid_setpoint - bg  # [batch]
+
+            # Try to use last feature as dBG if BGDerivativeWrapper is on.
+            if x.shape[1] > 1:
+                d_bg = x[:, -1]
+            else:
+                d_bg = torch.zeros_like(bg)
+
+            # Simple scalar integral shared across envs (works fine for num_envs=1).
+            if update_pid_state:
+                # Average error over batch (if multiple envs).
+                mean_err = error.mean().detach()
+                self.pid_integral += mean_err
+                self.pid_prev_error = mean_err
+
+            # PID-ish term (PI + D) – integral state is shared, so use its scalar
+            pid_term = (
+                self.pid_kp * error
+                + self.pid_kd * d_bg
+                + self.pid_ki * self.pid_integral[0]
+            )  # [batch]
+
+            # Expand to action dimension
+            pid_term = pid_term.unsqueeze(-1).expand_as(mu)
+            mu = mu + pid_term
+
         std = torch.exp(self.logstd)
-        # broadcast std to batch shape
         std = std.expand_as(mu)
         dist = Normal(mu, std)
 
         if action is None:
-            action = dist.rsample()  # use rsample() for reparameterization (optional)
+            action = dist.rsample()
         logprob = dist.log_prob(action).sum(-1)
         entropy = dist.entropy().sum(-1)
         value = self.critic(x).squeeze(-1)
@@ -459,7 +543,12 @@ def main():
     agent = AgentContinuous(obs_dim, act_dim, act_low, act_high, 
                             clip_actions=args.clip_actions,
                             action_initial_bias=args.action_initial_bias,
-                            hidden_dim=args.hidden_dim
+                            hidden_dim=args.hidden_dim,
+                            use_hybrid_pid=args.use_hybrid_pid,
+                            pid_setpoint=args.pid_setpoint,
+                            pid_init_kp=args.pid_init_kp,
+                            pid_init_ki=args.pid_init_ki,
+                            pid_init_kd=args.pid_init_kd,
                             ).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
@@ -511,7 +600,7 @@ def main():
             with torch.no_grad():
                 # flatten next_obs to [num_envs, obs_dim] if needed
                 flat_next_obs = next_obs.reshape(args.num_envs, -1)
-                action, logprob, _, value = agent.get_action_and_value(flat_next_obs)
+                action, logprob, _, value = agent.get_action_and_value(flat_next_obs, update_pid_state=args.use_hybrid_pid)
             values[step] = value
             actions[step] = action
             logprobs[step] = logprob
@@ -638,7 +727,7 @@ def main():
 
                 mb_obs = b_obs[mb_inds].to(device).reshape(len(mb_inds), -1)
                 mb_actions = b_actions[mb_inds].to(device).reshape(len(mb_inds), -1)
-                _, newlogprob, entropy, newvalue = agent.get_action_and_value(mb_obs, mb_actions)
+                _, newlogprob, entropy, newvalue = agent.get_action_and_value(mb_obs, mb_actions, update_pid_state=args.use_hybrid_pid)
                 logratio = newlogprob - b_logprobs[mb_inds].to(device)
                 ratio = logratio.exp()
 
