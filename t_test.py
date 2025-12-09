@@ -14,27 +14,28 @@ from simglucose.envs import T1DSimGymnaisumEnv  # Make sure this is available
 from cpo import AgentContinuous as CPOAgent     # Adjust import for your agent
 from ppo import AgentContinuous as PPOAgent     # Adjust import for your agent
 from ppo import BGDerivativeWrapper, BGTimeOutsideCostWrapper, BGSmoothControlCostWrapper
+from evaluate import make_test_env
 
 
-# 1. Register the environment for testing
-def make_test_env(patient="adolescent2", patient_name_hash="adolescent#002", seed=123):
-    np.random.seed(seed)
-    random.seed(seed)
-    env_id = f"simglucose/{patient}-test-v0"
-    # avoid double-registration if you call multiple times
-    try:
-        gym.spec(env_id)
-    except gym.error.Error:
-        register(
-            id=env_id,
-            entry_point="simglucose.envs:T1DSimGymnaisumEnv",
-            max_episode_steps=60,  # keep as in your snippet
-            kwargs={"patient_name": patient_name_hash},
-        )
-    env = gym.make(env_id)
-    # env = BGDerivativeWrapper(env)
-    env = BGTimeOutsideCostWrapper(env)
-    return env
+# # 1. Register the environment for testing
+# def make_test_env(patient="adolescent2", patient_name_hash="adolescent#002", seed=123):
+#     np.random.seed(seed)
+#     random.seed(seed)
+#     env_id = f"simglucose/{patient}-test-v0"
+#     # avoid double-registration if you call multiple times
+#     try:
+#         gym.spec(env_id)
+#     except gym.error.Error:
+#         register(
+#             id=env_id,
+#             entry_point="simglucose.envs:T1DSimGymnaisumEnv",
+#             max_episode_steps=60,  # keep as in your snippet
+#             kwargs={"patient_name": patient_name_hash},
+#         )
+#     env = gym.make(env_id)
+#     # env = BGDerivativeWrapper(env)
+#     env = BGTimeOutsideCostWrapper(env)
+#     return env
 
 
 # 2. Load trained agent (same as before but used for both models)
@@ -126,6 +127,9 @@ def evaluate_model_tir(
     num_seeds=10,
     num_steps=288,
     label="model",
+    state = "basic",
+    cost = "time_outside",
+    reward = "risk",
 ):
     """
     Run multiple seeds for one model and return TIR array (one TIR per seed).
@@ -139,6 +143,9 @@ def evaluate_model_tir(
             patient=patient,
             patient_name_hash=patient_hash,
             seed=this_seed,
+            state=state,
+            cost =cost,
+            reward=reward
         )
 
         bg_trajectory, _ = evaluate_policy(
@@ -211,6 +218,14 @@ def main():
         help="Root directory holding model folders.",
     )
 
+    parser.add_argument("--model_1_state", type=str, default="basic") # or deriv
+    parser.add_argument("--model_1_cost", type=str, default="time_outside") # or smooth
+    parser.add_argument("--model_1_reward", type=str, default="risk") # or proportional or regioned
+
+    parser.add_argument("--model_2_state", type=str, default="basic") # or deriv
+    parser.add_argument("--model_2_cost", type=str, default="time_outside") # or smooth
+    parser.add_argument("--model_2_reward", type=str, default="risk") # or proportional or regioned
+
     parser.add_argument("--patient", type=str, default="adolescent2")
     parser.add_argument("--patient_hash", type=str, default="adolescent#002")
     parser.add_argument("--seed", type=int, default=123)
@@ -241,24 +256,38 @@ def main():
     print(f"Model 2 path: {model2_full_path}")
 
     # Create a template env just to size the networks
-    env_template = make_test_env(
+    env_template_1 = make_test_env(
         patient=args.patient,
         patient_name_hash=args.patient_hash,
         seed=args.seed,
+        state=args.model_1_state,
+        cost = args.model_1_cost,
+        reward = args.model_1_reward
     )
+
+    env_template_2 = make_test_env(
+        patient=args.patient,
+        patient_name_hash=args.patient_hash,
+        seed=args.seed,
+        state=args.model_2_state,
+        cost = args.model_2_cost,
+        reward = args.model_2_reward
+    )
+
 
     # Load agents
     agent1 = load_trained_agent(
-        env=env_template,
+        env=env_template_1,
         model_path=model1_full_path,
         model=args.model1_type,
     )
     agent2 = load_trained_agent(
-        env=env_template,
+        env=env_template_2,
         model_path=model2_full_path,
         model=args.model2_type,
     )
-    env_template.close()
+    env_template_1.close()
+    env_template_2.close()
 
     # Evaluate both models on the same seeds
     tir1 = evaluate_model_tir(
@@ -269,6 +298,9 @@ def main():
         num_seeds=args.num_seeds,
         num_steps=args.num_steps,
         label=f"{args.model1_type}_1",
+        state=args.model_1_state,
+        cost = args.model_1_cost,
+        reward = args.model_1_reward
     )
     tir2 = evaluate_model_tir(
         agent2,
@@ -278,6 +310,9 @@ def main():
         num_seeds=args.num_seeds,
         num_steps=args.num_steps,
         label=f"{args.model2_type}_2",
+        state=args.model_2_state,
+        cost = args.model_2_cost,
+        reward = args.model_2_reward
     )
 
     print("\n===== TIR Summary =====")
