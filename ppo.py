@@ -160,6 +160,32 @@ class ProportionalRewardWrapper(RewardHackWrapper):
         reward = 1.0 - abs(bg - center) / scale
 
         return reward
+    
+class AsymmetricRewardWrapper(RewardHackWrapper):
+    def reward_from_bg(self, obs):
+        # If FlattenObservation: BG is usually feature 0
+        if isinstance(obs, dict):
+            bg = float(obs.get("BG", 110))
+        else:
+            bg = float(obs[0])  # flatten → BG is index 0 typically
+        
+        center = 125.0
+        scale = 55.0  # overall scale for how fast reward decays
+
+        # Distance from target
+        delta = abs(bg - center)
+
+        # Make lows hurt more than highs
+        if bg < center:
+            delta *= 1.5  # factor > 1.0 ⇒ hypo is penalized more
+
+        reward = 1.0 - delta / scale
+
+        # (optional but usually nice) clip to a reasonable range
+        reward = max(min(reward, 1.0), -1.0)
+
+        return reward
+
 
 class ActionDelayWrapper(gym.Wrapper):
     """
@@ -274,6 +300,8 @@ def make_env(env_id, patient, patient_name_hash, render_mode=None,  reward_hack=
         if reward_hack:
             if reward_method == "proportional":
                 env = ProportionalRewardWrapper(env)
+            elif reward_method == "asymmetric":
+                env = AsymmetricRewardWrapper(env)
             else: # regioned
                 env = RewardHackWrapper(env)
         if use_lagrangian:
