@@ -36,6 +36,7 @@ def load_trained_agent(
     env,
     model_path="runs/simglucose/adolescent2-v0__cpo_cleanrl__1__1764654879__2025-12-02_00-54-39/adolescent2_cpo.pt",
     model="cpo",
+    hidden_dim = 64
 ):
     if model == "cpo":
         ModelAgent = CPOAgent
@@ -238,6 +239,7 @@ def main():
     parser.add_argument("--patient", type=str, default="adolescent2")
     parser.add_argument("--patient_hash", type=str, default="adolescent#002")
     parser.add_argument("--seed", type=int, default=123)
+    parser.add_argument("--hidden_dim", type=int, default=64)
     parser.add_argument(
         "--num_seeds",
         type=int,
@@ -255,7 +257,7 @@ def main():
     env = make_test_env(patient=args.patient, patient_name_hash=args.patient_hash, seed=args.seed)
 
     # Load the trained agent
-    agent = load_trained_agent(env=env, model_path=args.model_full_path, model=args.model)
+    agent = load_trained_agent(env=env, model_path=args.model_full_path, model=args.model, hidden_dim=args.hidden_dim)
 
     plots_dir = f"plots/{args.model_path}"
     os.makedirs(plots_dir, exist_ok=True)

@@ -67,6 +67,7 @@ class Args:
     num_iterations: int = 0
 
     clip_actions: bool = False
+    hidden_dim: int = 64
 
 
 # ----------------------------
@@ -104,31 +105,31 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
 # Agent with cost critic (PPO-style + extra head)
 # ----------------------------
 class AgentContinuous(nn.Module):
-    def __init__(self, obs_dim, act_dim, act_low, act_high, clip_actions=False):
+    def __init__(self, obs_dim, act_dim, act_low, act_high, clip_actions=False, hidden_dim=64):
         super().__init__()
         # Reward critic
         self.critic = nn.Sequential(
-            layer_init(nn.Linear(obs_dim, 64)),
+            layer_init(nn.Linear(obs_dim, hidden_dim)),
             nn.Tanh(),
-            layer_init(nn.Linear(64, 64)),
+            layer_init(nn.Linear(hidden_dim, hidden_dim)),
             nn.Tanh(),
-            layer_init(nn.Linear(64, 1), std=1.0),
+            layer_init(nn.Linear(hidden_dim, 1), std=1.0),
         )
         # Cost critic
         self.cost_critic = nn.Sequential(
-            layer_init(nn.Linear(obs_dim, 64)),
+            layer_init(nn.Linear(obs_dim, hidden_dim)),
             nn.Tanh(),
-            layer_init(nn.Linear(64, 64)),
+            layer_init(nn.Linear(hidden_dim, hidden_dim)),
             nn.Tanh(),
-            layer_init(nn.Linear(64, 1), std=1.0),
+            layer_init(nn.Linear(hidden_dim, 1), std=1.0),
         )
         # Actor (same structure as PPO, just no initial bias here by default)
         self.actor_mean = nn.Sequential(
-            layer_init(nn.Linear(obs_dim, 64)),
+            layer_init(nn.Linear(obs_dim, hidden_dim)),
             nn.Tanh(),
-            layer_init(nn.Linear(64, 64)),
+            layer_init(nn.Linear(hidden_dim, hidden_dim)),
             nn.Tanh(),
-            layer_init(nn.Linear(64, act_dim), std=0.01),
+            layer_init(nn.Linear(hidden_dim, act_dim), std=0.01),
         )
         self.logstd = nn.Parameter(torch.zeros(act_dim))
 
@@ -249,7 +250,7 @@ def main():
     act_low = envs.single_action_space.low
     act_high = envs.single_action_space.high
 
-    agent = AgentContinuous(obs_dim, act_dim, act_low, act_high, clip_actions=args.clip_actions).to(device)
+    agent = AgentContinuous(obs_dim, act_dim, act_low, act_high, clip_actions=args.clip_actions, hidden_dim=args.hidden_dim).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
     # Lagrange multiplier for cost
