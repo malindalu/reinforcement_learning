@@ -9,6 +9,7 @@ from gymnasium.envs.registration import register
 from simglucose.envs import T1DSimGymnaisumEnv  # Make sure this is available
 from cpo import AgentContinuous as CPOAgent  # Adjust import for your agent
 from ppo import AgentContinuous as PPOAgent  # Adjust import for your agent
+from ppo import BGDerivativeWrapper
 
 # 1. Register the environment for testing (with 24-hour horizon)
 def make_test_env(patient="adolescent2", patient_name_hash="adolescent#002", seed=123):
@@ -25,7 +26,9 @@ def make_test_env(patient="adolescent2", patient_name_hash="adolescent#002", see
             max_episode_steps=288,  # 24 hours (288 × 5 minutes = 24 hours)
             kwargs={"patient_name": patient_name_hash},
         )
-    return gym.make(env_id)
+    env = gym.make(env_id)
+    env = BGDerivativeWrapper(env)
+    return env
 
 # 2. Load trained agent
 def load_trained_agent(
