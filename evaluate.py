@@ -24,7 +24,7 @@ def make_test_env(patient="adolescent2", patient_name_hash="adolescent#002", see
         register(
             id=env_id,  # Create a new test env
             entry_point="simglucose.envs:T1DSimGymnaisumEnv",
-            max_episode_steps=60,
+            max_episode_steps=288,
             kwargs={"patient_name": patient_name_hash},
         )
     env = gym.make(env_id)
