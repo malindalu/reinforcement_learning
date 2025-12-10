@@ -77,8 +77,34 @@ def load_trained_agent(
     else:
         state_dict = torch.load(model_path, map_location=torch.device("cpu"))
         print("Loaded model on CPU (CUDA not available).")
+    
 
-    agent.load_state_dict(state_dict)
+    # ---- Fix / ignore pid_prev_error shape mismatch ----
+    model_state = agent.state_dict()
+    if "pid_prev_error" in state_dict:
+        ckpt_val = state_dict["pid_prev_error"]
+        model_val = model_state["pid_prev_error"]
+        if ckpt_val.shape != model_val.shape:
+            print(
+                f"[load_trained_agent] pid_prev_error shape mismatch "
+                f"{tuple(ckpt_val.shape)} (ckpt) vs {tuple(model_val.shape)} (model). "
+                "Keeping model default and dropping checkpoint value."
+            )
+            # Option A: just drop it so the model keeps its own initialized value
+            del state_dict["pid_prev_error"]
+
+            # (Alternatively, you *could* reshape instead of dropping:
+            # state_dict["pid_prev_error"] = ckpt_val.view_as(model_val)
+            # but dropping is safer if you just want default PID behavior.)
+
+    # Load with strict=False so dropped key is allowed
+    missing, unexpected = agent.load_state_dict(state_dict, strict=False)
+    if missing:
+        print("[load_trained_agent] Missing keys after load_state_dict:", missing)
+    if unexpected:
+        print("[load_trained_agent] Unexpected keys in checkpoint:", unexpected)
+
+    # agent.load_state_dict(state_dict)
     agent.eval()
     return agent
 
