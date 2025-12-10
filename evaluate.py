@@ -47,7 +47,8 @@ def load_trained_agent(
     env,
     model_path="runs/simglucose/adolescent2-v0__cpo_cleanrl__1__1764654879__2025-12-02_00-54-39/adolescent2_cpo.pt",
     model="cpo",
-    hidden_dim = 64
+    hidden_dim = 64,
+    use_hybrid_pid = False
 ):
     if model == "cpo":
         ModelAgent = CPOAgent
@@ -66,7 +67,8 @@ def load_trained_agent(
         act_low=act_low,
         act_high=act_high,
         clip_actions=True,  # if that’s what you used in training
-        hidden_dim = hidden_dim
+        hidden_dim = hidden_dim,
+        use_hybrid_pid=use_hybrid_pid
     )
 
     if torch.cuda.is_available():
@@ -255,6 +257,7 @@ def main():
     parser.add_argument("--state", type=str, default="basic") # or deriv
     parser.add_argument("--cost", type=str, default="time_outside") # or proportional
     parser.add_argument("--reward", type=str, default="risk") # or proportional or regioned
+    parser.add_argument("--pid", type=bool, default=False) # or proportional or regioned
     parser.add_argument(
         "--num_seeds",
         type=int,
@@ -273,7 +276,7 @@ def main():
                         state = args.state, cost = args.cost, reward = args.reward)
 
     # Load the trained agent
-    agent = load_trained_agent(env=env, model_path=args.model_full_path, model=args.model, hidden_dim=args.hidden_dim)
+    agent = load_trained_agent(env=env, model_path=args.model_full_path, model=args.model, hidden_dim=args.hidden_dim, use_hybrid_pid=args.pid)
 
     plots_dir = f"plots/{args.model_path}"
     os.makedirs(plots_dir, exist_ok=True)
