@@ -9,7 +9,7 @@ from gymnasium.envs.registration import register
 from simglucose.envs import T1DSimGymnaisumEnv  # Make sure this is available
 from cpo import AgentContinuous as CPOAgent  # Adjust import for your agent
 from ppo import AgentContinuous as PPOAgent  # Adjust import for your agent
-from ppo import BGDerivativeWrapper, BGTimeOutsideCostWrapper, BGSmoothControlCostWrapper, ProportionalRewardWrapper, RewardHackWrapper
+from ppo import BGDerivativeWrapper, BGTimeOutsideCostWrapper, BGSmoothControlCostWrapper, ProportionalRewardWrapper, RewardHackWrapper, AsymmetricRewardWrapper
 
 # 1. Register the environment for testing (with 24-hour horizon)
 def make_test_env(patient="adolescent2", patient_name_hash="adolescent#002", seed=123, 
@@ -38,6 +38,8 @@ def make_test_env(patient="adolescent2", patient_name_hash="adolescent#002", see
         env = ProportionalRewardWrapper(env)
     elif reward == "regioned":
         env = RewardHackWrapper(env)
+    elif reward == "asymmetric":
+        env = AsymmetricRewardWrapper(env)
     return env
 
 # 2. Load trained agent
